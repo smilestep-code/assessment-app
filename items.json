@@ -1,0 +1,247 @@
+[
+  {
+    "category": "作業遂行",
+    "name": "指示理解",
+    "description": "指示された手順に従って作業する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "指示遵守",
+    "description": "指示内容を理解する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "安全性",
+    "description": "安全に作業する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "時間遵守",
+    "description": "決められた時間内に与えられた仕事を仕上げる"
+  },
+  {
+    "category": "作業遂行",
+    "name": "正確性",
+    "description": "正確に作業する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "速度",
+    "description": "必要とされるスピードで作業する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "能力向上",
+    "description": "作業を繰り返すことで上達する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "巧緻性",
+    "description": "細かな作業をする"
+  },
+  {
+    "category": "作業遂行",
+    "name": "集中力",
+    "description": "集中して作業する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "変化への対応",
+    "description": "作業環境、作業内容、手順等の変更に対応する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "自己点検力",
+    "description": "自分でミスを見つける"
+  },
+  {
+    "category": "作業遂行",
+    "name": "道具の使用",
+    "description": "道具を安全に使う"
+  },
+  {
+    "category": "作業遂行",
+    "name": "備品の取り扱い",
+    "description": "道具、材料、製品等を大切にする"
+  },
+  {
+    "category": "作業遂行",
+    "name": "準備・片付け能力",
+    "description": "道具や材料を準備する・片付ける"
+  },
+  {
+    "category": "作業遂行",
+    "name": "読解力",
+    "description": "文章を読んで理解する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "文章記述力",
+    "description": "文章を書く"
+  },
+  {
+    "category": "作業遂行",
+    "name": "メモ",
+    "description": "メモを取って活用する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "計算",
+    "description": "計算をする"
+  },
+  {
+    "category": "作業遂行",
+    "name": "計数・計量",
+    "description": "重さをはかったり、個数をそろえる"
+  },
+  {
+    "category": "作業遂行",
+    "name": "持久力",
+    "description": "1日を通して作業する"
+  },
+  {
+    "category": "作業遂行",
+    "name": "自発性",
+    "description": "自分からすすんで取り組む"
+  },
+  {
+    "category": "作業遂行",
+    "name": "意欲",
+    "description": "成長するために学ぼうとする、上手にやろうとする"
+  },
+  {
+    "category": "職業生活",
+    "name": "ルール理解",
+    "description": "働く場のルールを理解している"
+  },
+  {
+    "category": "職業生活",
+    "name": "規則順守",
+    "description": "職場の規則を守る"
+  },
+  {
+    "category": "職業生活",
+    "name": "勤怠",
+    "description": "やむを得ない理由以外の遅刻・早退・欠席がない"
+  },
+  {
+    "category": "職業生活",
+    "name": "欠席等の連絡",
+    "description": "欠席、遅刻などを連絡する"
+  },
+  {
+    "category": "職業生活",
+    "name": "自立",
+    "description": "日常生活動作を行う"
+  },
+  {
+    "category": "職業生活",
+    "name": "身だしなみ",
+    "description": "身だしなみを整える"
+  },
+  {
+    "category": "職業生活",
+    "name": "体調管理",
+    "description": "体調に気を付ける"
+  },
+  {
+    "category": "職業生活",
+    "name": "健康管理",
+    "description": "体調不良時に対処できる"
+  },
+  {
+    "category": "職業生活",
+    "name": "リカバリー",
+    "description": "体調を回復させるための行動をとる"
+  },
+  {
+    "category": "職業生活",
+    "name": "交通機関",
+    "description": "交通機関を利用する"
+  },
+  {
+    "category": "職業生活",
+    "name": "書類手続き",
+    "description": "簡単な書類手続きをする"
+  },
+  {
+    "category": "職業生活",
+    "name": "条件理解",
+    "description": "賃金や労働条件を理解する"
+  },
+  {
+    "category": "職業生活",
+    "name": "危険時の対処",
+    "description": "危険に対処する"
+  },
+  {
+    "category": "職業生活",
+    "name": "時間の区別",
+    "description": "作業時間と休憩時間の区別をする"
+  },
+  {
+    "category": "職業生活",
+    "name": "生活リズム",
+    "description": "起床、食事、睡眠などの生活リズムを守る"
+  },
+  {
+    "category": "職業生活",
+    "name": "セルフケア",
+    "description": "ストレスを解消する"
+  },
+  {
+    "category": "職業生活",
+    "name": "通院・服薬",
+    "description": "医師の指示通りに通院・服薬する"
+  },
+  {
+    "category": "対人技能",
+    "name": "挨拶",
+    "description": "相手や場に応じた挨拶をする"
+  },
+  {
+    "category": "対人技能",
+    "name": "返事",
+    "description": "相手や場に応じた返事をする"
+  },
+  {
+    "category": "対人技能",
+    "name": "会話",
+    "description": "同僚（または他利用者）や上司（または職員）と会話する"
+  },
+  {
+    "category": "対人技能",
+    "name": "自己発信",
+    "description": "自分の気持ちを相手に伝える"
+  },
+  {
+    "category": "対人技能",
+    "name": "応答",
+    "description": "相手が確認したいことについて答える"
+  },
+  {
+    "category": "対人技能",
+    "name": "質問・報連相",
+    "description": "質問・報告・連絡・相談をする"
+  },
+  {
+    "category": "対人技能",
+    "name": "自己統制力",
+    "description": "感情をコントロールする"
+  },
+  {
+    "category": "対人技能",
+    "name": "言葉遣い",
+    "description": "相手や場に応じた言葉をつかう"
+  },
+  {
+    "category": "対人技能",
+    "name": "役割",
+    "description": "職場の役割分担を理解して行動する"
+  },
+  {
+    "category": "対人技能",
+    "name": "協調性",
+    "description": "他の人と協力して作業する"
+  }
+]

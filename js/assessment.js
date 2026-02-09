@@ -1,0 +1,728 @@
+// 就労選択支援サービス - アセスメントアプリケーション
+// Main JavaScript v202602070900
+(function() {
+    'use strict';
+    
+    const VERSION = '202602070900';
+    console.log(`Assessment App v${VERSION} initializing...`);
+    
+    // ===== 設定 =====
+    const ITEMS_URL = `./items.json?v=${VERSION}`;
+    
+    // ===== グローバル変数 =====
+    let assessmentItems = [];
+    let currentAssessment = {
+        basicInfo: {},
+        scores: {},
+        memos: {}
+    };
+    let currentLoadedAssessmentId = null;
+    let categoryCharts = new Map();
+    
+    // ===== 評価基準データ =====
+    const scoreCriteria = {
+        1: { label: "非常に困難", color: "#0d6efd" },
+        2: { label: "支援が必要", color: "#198754" },
+        3: { label: "普通", color: "#ffc107" },
+        4: { label: "良好", color: "#fd7e14" },
+        5: { label: "非常に良好", color: "#dc3545" }
+    };
+    
+    // ===== スコア別カラー取得 =====
+    function getScoreColor(score) {
+        return scoreCriteria[score]?.color || '#94a3b8';
+    }
+    
+    // ===== LocalStorage管理（利用者単位） =====
+    function getStorageKey(userName) {
+        if (!userName || userName.trim() === '') return null;
+        const safeUserName = userName.trim().replace(/[^a-zA-Z0-9._-]/g, '_');
+        return `assessments_${safeUserName}`;
+    }
+    
+    function getCurrentUserName() {
+        return document.getElementById('userName')?.value?.trim() || '';
+    }
+    
+    function getUserAssessments(userName) {
+        const key = getStorageKey(userName);
+        if (!key) return [];
+        try {
+            const data = localStorage.getItem(key);
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            console.error('評価履歴の読み込みエラー:', e);
+            return [];
+        }
+    }
+    
+    function saveUserAssessments(userName, assessments) {
+        const key = getStorageKey(userName);
+        if (!key) return false;
+        try {
+            localStorage.setItem(key, JSON.stringify(assessments));
+            return true;
+        } catch (e) {
+            console.error('評価履歴の保存エラー:', e);
+            return false;
+        }
+    }
+    
+    // ===== 評価項目の読み込み（items.json優先） =====
+    async function loadAssessmentItems() {
+        try {
+            const response = await fetch(ITEMS_URL, { cache: "no-store" });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            let items = Array.isArray(data) ? data : (data.items || []);
+            
+            if (!Array.isArray(items) || items.length === 0) {
+                throw new Error('items.jsonが空または不正な形式です');
+            }
+            
+            assessmentItems = items;
+            localStorage.setItem('assessmentItems_cache', JSON.stringify(items));
+            console.log(`✅ items.json読み込み成功（${items.length}項目）`);
+            return true;
+            
+        } catch (error) {
+            console.warn('⚠️ items.json読み込み失敗:', error.message);
+            
+            // キャッシュフォールバック
+            try {
+                const cached = localStorage.getItem('assessmentItems_cache');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (parsed.length > 0) {
+                        assessmentItems = parsed;
+                        console.log(`⚠️ キャッシュから復元（${parsed.length}項目）`);
+                        showWarning('items.jsonが読み込めませんでした。キャッシュから復元しました。');
+                        return true;
+                    }
+                }
+            } catch (cacheError) {
+                console.error('キャッシュ読み込みエラー:', cacheError);
+            }
+            
+            // 完全失敗
+            assessmentItems = [];
+            showError('評価項目を読み込めませんでした', [
+                'items.json がリポジトリのルート（index.htmlと同じ階層）にあるか確認してください',
+                'items.json の形式が正しいJSON配列か確認してください',
+                'ブラウザのコンソール（F12）でエラー詳細を確認してください'
+            ]);
+            return false;
+        }
+    }
+    
+    // ===== エラー表示 =====
+    function showError(title, messages) {
+        const container = document.getElementById('assessmentItems');
+        let html = `
+            <div class="alert alert-danger error-message">
+                <h4><i class="bi bi-exclamation-triangle me-2"></i>${title}</h4>
+                <ul>
+        `;
+        messages.forEach(msg => {
+            html += `<li>${msg}</li>`;
+        });
+        html += `</ul></div>`;
+        container.innerHTML = html;
+    }
+    
+    function showWarning(message) {
+        const container = document.getElementById('assessmentItems');
+        const warning = document.createElement('div');
+        warning.className = 'alert alert-warning alert-dismissible fade show';
+        warning.innerHTML = `
+            <strong>警告:</strong> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        container.insertBefore(warning, container.firstChild);
+    }
+    
+    // ===== 評価項目の表示（イベントデリゲーション） =====
+    function renderAssessmentItems() {
+        const container = document.getElementById('assessmentItems');
+        
+        if (!assessmentItems || assessmentItems.length === 0) {
+            showError('評価項目がありません', ['items.jsonを確認してください']);
+            return;
+        }
+        
+        // カテゴリごとにグループ化
+        const grouped = {};
+        assessmentItems.forEach((item, index) => {
+            if (!grouped[item.category]) grouped[item.category] = [];
+            grouped[item.category].push({ ...item, index });
+        });
+        
+        let html = '';
+        
+        Object.keys(grouped).forEach(category => {
+            html += `<div class="category-section"><h3 class="category-title">${category}</h3>`;
+            
+            grouped[category].forEach(item => {
+                const currentScore = currentAssessment.scores[item.index] || null;
+                const currentMemo = currentAssessment.memos[item.index] || '';
+                
+                html += `
+                    <div class="assessment-item card">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-md-3">
+                                    <h5 class="item-name mb-1">${item.name}</h5>
+                                    <small class="text-muted">${item.description || ''}</small>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="score-buttons" data-item-index="${item.index}">
+                `;
+                
+                for (let score = 1; score <= 5; score++) {
+                    const active = currentScore === score ? 'active' : '';
+                    const color = getScoreColor(score);
+                    const bgColor = currentScore === score ? color : 'transparent';
+                    const textColor = currentScore === score ? 'white' : color;
+                    
+                    html += `
+                        <button type="button" 
+                                class="btn btn-outline-primary score-btn ${active}" 
+                                data-score="${score}"
+                                style="border-color: ${color}; background-color: ${bgColor}; color: ${textColor};">
+                            ${score}
+                        </button>
+                    `;
+                }
+                
+                html += `
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <button type="button" 
+                                            class="btn btn-sm btn-outline-secondary w-100 toggle-memo-btn" 
+                                            data-item-index="${item.index}">
+                                        <i class="bi bi-sticky me-1"></i>メモ
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="memo-section mt-3 ${currentMemo ? '' : 'd-none'}" data-memo-section="${item.index}">
+                                <textarea class="form-control memo-textarea" 
+                                          rows="2" 
+                                          placeholder="メモや所見を入力..." 
+                                          data-item-index="${item.index}">${currentMemo}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+        });
+        
+        container.innerHTML = html;
+        
+        // イベントデリゲーション設定
+        setupEventDelegation();
+    }
+    
+    // ===== イベントデリゲーション（onclick不使用） =====
+    function setupEventDelegation() {
+        const container = document.getElementById('assessmentItems');
+        
+        // スコアボタンのクリック
+        container.addEventListener('click', function(e) {
+            const scoreBtn = e.target.closest('.score-btn');
+            if (scoreBtn) {
+                const score = parseInt(scoreBtn.dataset.score);
+                const itemIndex = parseInt(scoreBtn.closest('.score-buttons').dataset.itemIndex);
+                selectScore(itemIndex, score);
+            }
+            
+            // メモトグルボタン
+            const toggleMemoBtn = e.target.closest('.toggle-memo-btn');
+            if (toggleMemoBtn) {
+                const itemIndex = parseInt(toggleMemoBtn.dataset.itemIndex);
+                toggleMemo(itemIndex);
+            }
+        });
+        
+        // メモのchange/blur
+        container.addEventListener('blur', function(e) {
+            const textarea = e.target.closest('.memo-textarea');
+            if (textarea) {
+                const itemIndex = parseInt(textarea.dataset.itemIndex);
+                saveMemo(itemIndex, textarea.value);
+            }
+        }, true);
+        
+        container.addEventListener('change', function(e) {
+            const textarea = e.target.closest('.memo-textarea');
+            if (textarea) {
+                const itemIndex = parseInt(textarea.dataset.itemIndex);
+                saveMemo(itemIndex, textarea.value);
+            }
+        });
+    }
+    
+    // ===== スコア選択 =====
+    function selectScore(itemIndex, score) {
+        currentAssessment.scores[itemIndex] = score;
+        
+        // ボタンのアクティブ状態を更新
+        const scoreButtonsGroup = document.querySelector(`.score-buttons[data-item-index="${itemIndex}"]`);
+        if (scoreButtonsGroup) {
+            const buttons = scoreButtonsGroup.querySelectorAll('.score-btn');
+            buttons.forEach(btn => {
+                const btnScore = parseInt(btn.dataset.score);
+                const color = getScoreColor(btnScore);
+                
+                if (btnScore === score) {
+                    btn.classList.add('active');
+                    btn.style.backgroundColor = color;
+                    btn.style.color = 'white';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.backgroundColor = 'transparent';
+                    btn.style.color = color;
+                }
+            });
+        }
+    }
+    
+    // ===== メモのトグル =====
+    function toggleMemo(itemIndex) {
+        const memoSection = document.querySelector(`[data-memo-section="${itemIndex}"]`);
+        if (memoSection) {
+            memoSection.classList.toggle('d-none');
+        }
+    }
+    
+    // ===== メモの保存 =====
+    function saveMemo(itemIndex, value) {
+        currentAssessment.memos[itemIndex] = value;
+    }
+    
+    // ===== 評価結果の保存 =====
+    function saveAssessment() {
+        const userName = document.getElementById('userName').value.trim();
+        const managementNumber = document.getElementById('managementNumber').value.trim();
+        const evaluatorName = document.getElementById('evaluatorName').value.trim();
+        const entryDate = document.getElementById('entryDate').value;
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        
+        if (!userName || !evaluatorName || !entryDate || !startDate || !endDate) {
+            alert('基本情報（※必須項目）をすべて入力してください');
+            return;
+        }
+        
+        if (Object.keys(currentAssessment.scores).length === 0) {
+            alert('少なくとも1つの項目を評価してください');
+            return;
+        }
+        
+        const assessmentData = {
+            id: Date.now(),
+            basicInfo: { userName, managementNumber, evaluatorName, entryDate, startDate, endDate },
+            scores: { ...currentAssessment.scores },
+            memos: { ...currentAssessment.memos },
+            items: assessmentItems.map(item => ({ ...item })),
+            timestamp: new Date().toISOString()
+        };
+        
+        const userAssessments = getUserAssessments(userName);
+        userAssessments.push(assessmentData);
+        
+        if (saveUserAssessments(userName, userAssessments)) {
+            alert(`✅ 評価結果を保存しました\n\n利用者: ${userName}\n評価ID: ${assessmentData.id}`);
+            loadPastAssessments();
+        } else {
+            alert('❌ 保存に失敗しました');
+        }
+    }
+    
+    // ===== フォームのクリア =====
+    function clearForm() {
+        document.getElementById('userName').value = '';
+        document.getElementById('managementNumber').value = '';
+        document.getElementById('evaluatorName').value = '';
+        document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('startDate').value = '';
+        document.getElementById('endDate').value = '';
+        
+        currentAssessment = { basicInfo: {}, scores: {}, memos: {} };
+        currentLoadedAssessmentId = null;
+        
+        renderAssessmentItems();
+        
+        document.getElementById('pastAssessments').innerHTML = '<p class="text-muted">利用者名を入力すると、その利用者の過去の評価が表示されます。</p>';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    // ===== 過去の評価結果を読み込み =====
+    function loadPastAssessments() {
+        const userName = getCurrentUserName();
+        const container = document.getElementById('pastAssessments');
+        
+        if (!userName) {
+            container.innerHTML = '<p class="text-muted">利用者名を入力すると、その利用者の過去の評価が表示されます。</p>';
+            return;
+        }
+        
+        const assessments = getUserAssessments(userName);
+        
+        if (assessments.length === 0) {
+            container.innerHTML = `<div class="alert alert-info"><strong>${userName}</strong> さんの過去の評価結果はありません</div>`;
+            return;
+        }
+        
+        let html = '<div class="list-group">';
+        
+        assessments.slice().reverse().forEach(assessment => {
+            const avgScore = calculateAverageScore(assessment.scores);
+            const mgmtNum = assessment.basicInfo.managementNumber ? ` [${assessment.basicInfo.managementNumber}]` : '';
+            
+            html += `
+                <div class="list-group-item history-item" data-assessment-id="${assessment.id}" data-user-name="${userName}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="flex-grow-1">
+                            <h6 class="mb-1">${assessment.basicInfo.entryDate} - ${assessment.basicInfo.userName}${mgmtNum}</h6>
+                            <p class="mb-1 text-muted small">
+                                評価者: ${assessment.basicInfo.evaluatorName} | 
+                                期間: ${assessment.basicInfo.startDate} 〜 ${assessment.basicInfo.endDate} | 
+                                平均スコア: <strong>${avgScore.toFixed(2)}</strong>
+                            </p>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-danger delete-history-btn" 
+                                    data-assessment-id="${assessment.id}" 
+                                    data-user-name="${userName}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+        
+        // イベントリスナー設定
+        container.querySelectorAll('.history-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                if (!e.target.closest('.delete-history-btn')) {
+                    const id = parseInt(this.dataset.assessmentId);
+                    const userName = this.dataset.userName;
+                    loadAssessment(userName, id);
+                }
+            });
+        });
+        
+        container.querySelectorAll('.delete-history-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const id = parseInt(this.dataset.assessmentId);
+                const userName = this.dataset.userName;
+                deleteAssessmentHistory(userName, id);
+            });
+        });
+    }
+    
+    // ===== 平均スコアの計算 =====
+    function calculateAverageScore(scores) {
+        const values = Object.values(scores);
+        if (values.length === 0) return 0;
+        return values.reduce((a, b) => a + b, 0) / values.length;
+    }
+    
+    // ===== 評価データの読み込み =====
+    function loadAssessment(userName, id) {
+        const assessments = getUserAssessments(userName);
+        const assessment = assessments.find(a => a.id === id);
+        
+        if (!assessment) {
+            alert('評価データが見つかりません');
+            return;
+        }
+        
+        if (!confirm(`この評価結果をフォームに読み込みますか？\n\n評価日: ${assessment.basicInfo.entryDate}`)) {
+            return;
+        }
+        
+        document.getElementById('userName').value = assessment.basicInfo.userName;
+        document.getElementById('managementNumber').value = assessment.basicInfo.managementNumber || '';
+        document.getElementById('evaluatorName').value = assessment.basicInfo.evaluatorName;
+        document.getElementById('entryDate').value = assessment.basicInfo.entryDate;
+        document.getElementById('startDate').value = assessment.basicInfo.startDate;
+        document.getElementById('endDate').value = assessment.basicInfo.endDate;
+        
+        currentAssessment.scores = { ...assessment.scores };
+        currentAssessment.memos = { ...assessment.memos };
+        currentLoadedAssessmentId = id;
+        
+        renderAssessmentItems();
+        alert('✅ 評価データを読み込みました');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    // ===== 評価履歴の削除 =====
+    function deleteAssessmentHistory(userName, id) {
+        if (!confirm('この評価結果を削除してもよろしいですか？')) {
+            return;
+        }
+        
+        const assessments = getUserAssessments(userName);
+        const filtered = assessments.filter(a => a.id !== id);
+        
+        saveUserAssessments(userName, filtered);
+        
+        if (currentLoadedAssessmentId === id) {
+            currentLoadedAssessmentId = null;
+        }
+        
+        loadPastAssessments();
+        alert('✅ 評価結果を削除しました');
+    }
+    
+    // ===== 評価結果を見る =====
+    function viewResults() {
+        const userName = getCurrentUserName();
+        if (!userName || Object.keys(currentAssessment.scores).length === 0) {
+            alert('評価データを入力してください');
+            return;
+        }
+        
+        const avgScore = calculateAverageScore(currentAssessment.scores);
+        
+        let html = `<h6>利用者: ${userName}</h6>`;
+        html += `<p>平均スコア: <strong>${avgScore.toFixed(2)}</strong></p><hr>`;
+        
+        const grouped = {};
+        assessmentItems.forEach((item, index) => {
+            if (!grouped[item.category]) grouped[item.category] = [];
+            grouped[item.category].push({ ...item, index });
+        });
+        
+        Object.keys(grouped).forEach(category => {
+            html += `<h5>${category}</h5><ul>`;
+            grouped[category].forEach(item => {
+                const score = currentAssessment.scores[item.index];
+                const memo = currentAssessment.memos[item.index] || '';
+                if (score) {
+                    html += `<li><strong>${item.name}</strong>: ${score} (${scoreCriteria[score].label})`;
+                    if (memo) html += `<br><small class="text-muted">メモ: ${memo}</small>`;
+                    html += `</li>`;
+                }
+            });
+            html += '</ul>';
+        });
+        
+        document.getElementById('resultsContent').innerHTML = html;
+        new bootstrap.Modal(document.getElementById('resultsModal')).show();
+    }
+    
+    // ===== チャート表示 =====
+    function viewChart() {
+        const userName = getCurrentUserName();
+        if (!userName || Object.keys(currentAssessment.scores).length === 0) {
+            alert('評価データを入力してください');
+            return;
+        }
+        
+        categoryCharts.forEach(chart => chart.destroy());
+        categoryCharts.clear();
+        
+        new bootstrap.Modal(document.getElementById('chartModal')).show();
+        setTimeout(() => renderChart(), 300);
+    }
+    
+    function renderChart() {
+        const container = document.getElementById('chartContainer');
+        container.innerHTML = '';
+        
+        const grouped = {};
+        assessmentItems.forEach((item, index) => {
+            const score = currentAssessment.scores[index];
+            if (score) {
+                if (!grouped[item.category]) grouped[item.category] = [];
+                grouped[item.category].push({ ...item, index, score });
+            }
+        });
+        
+        const BAR_HEIGHT = 32;
+        const GAP = 6;
+        const PADDING = 40;
+        
+        Object.keys(grouped).forEach(category => {
+            const items = grouped[category];
+            
+            const block = document.createElement('div');
+            block.className = 'chart-block';
+            
+            const header = document.createElement('div');
+            header.className = 'd-flex justify-content-between align-items-center mb-2';
+            header.innerHTML = `<h5>${category}</h5>`;
+            
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'btn btn-sm btn-outline-primary';
+            saveBtn.innerHTML = '<i class="bi bi-download me-1"></i>このカテゴリを保存';
+            saveBtn.addEventListener('click', () => saveCategoryChart(category));
+            header.appendChild(saveBtn);
+            
+            block.appendChild(header);
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = 520;
+            canvas.height = items.length * (BAR_HEIGHT + GAP) + PADDING;
+            block.appendChild(canvas);
+            container.appendChild(block);
+            
+            const labels = items.map(i => i.name);
+            const data = items.map(i => i.score);
+            const colors = data.map(s => getScoreColor(s));
+            
+            const chart = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors,
+                        borderWidth: 0,
+                        barThickness: BAR_HEIGHT,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: false,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            color: '#ffffff',
+                            font: { size: 14, weight: 'bold' },
+                            anchor: 'center',
+                            align: 'center',
+                            formatter: (v) => v
+                        }
+                    },
+                    scales: {
+                        x: { min: 0, max: 5, ticks: { stepSize: 1 } },
+                        y: { display: false }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+            
+            categoryCharts.set(category, chart);
+        });
+    }
+    
+    function saveCategoryChart(categoryName) {
+        const chart = categoryCharts.get(categoryName);
+        if (!chart) return;
+        
+        const link = document.createElement('a');
+        link.download = `assessment_${categoryName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.png`;
+        link.href = chart.toBase64Image();
+        link.click();
+    }
+    
+    // ===== CSV出力 =====
+    function handleExportCSV() {
+        const userName = getCurrentUserName();
+        if (!userName || Object.keys(currentAssessment.scores).length === 0) {
+            alert('評価データを入力してください');
+            return;
+        }
+        
+        const BOM = '\uFEFF';
+        const header = ['記入日', '利用者名', '管理番号', '評価実施者名', '評価期間開始', '評価期間終了', 'カテゴリ', '項目', 'スコア', '評価', 'メモ'];
+        
+        let rows = [header];
+        
+        assessmentItems.forEach((item, index) => {
+            const score = currentAssessment.scores[index];
+            if (score) {
+                rows.push([
+                    document.getElementById('entryDate').value,
+                    document.getElementById('userName').value,
+                    document.getElementById('managementNumber').value,
+                    document.getElementById('evaluatorName').value,
+                    document.getElementById('startDate').value,
+                    document.getElementById('endDate').value,
+                    item.category,
+                    item.name,
+                    score,
+                    scoreCriteria[score].label,
+                    (currentAssessment.memos[index] || '').replace(/\n/g, ' ')
+                ]);
+            }
+        });
+        
+        const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `assessment_${userName}_${Date.now()}.csv`;
+        link.click();
+    }
+    
+    // ===== イベントリスナーの設定 =====
+    function setupGlobalEventListeners() {
+        document.getElementById('toggleCriteria')?.addEventListener('click', function() {
+            document.getElementById('criteriaPanel').classList.toggle('d-none');
+        });
+        
+        document.getElementById('saveAssessment')?.addEventListener('click', saveAssessment);
+        document.getElementById('clearForm')?.addEventListener('click', clearForm);
+        document.getElementById('viewResults')?.addEventListener('click', viewResults);
+        document.getElementById('viewChart')?.addEventListener('click', viewChart);
+        document.getElementById('exportCSV')?.addEventListener('click', handleExportCSV);
+        document.getElementById('printResults')?.addEventListener('click', () => window.print());
+        document.getElementById('saveChartImage')?.addEventListener('click', function() {
+            const first = Array.from(categoryCharts.keys())[0];
+            if (first) saveCategoryChart(first);
+        });
+        
+        document.getElementById('userName')?.addEventListener('blur', function() {
+            if (this.value.trim()) loadPastAssessments();
+        });
+    }
+    
+    // ===== 初期化処理 =====
+    async function initialize() {
+        try {
+            document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
+            
+            const loaded = await loadAssessmentItems();
+            
+            if (loaded && assessmentItems.length > 0) {
+                renderAssessmentItems();
+                loadPastAssessments();
+                setupGlobalEventListeners();
+                console.log(`✅ App initialized successfully (${assessmentItems.length} items)`);
+            } else {
+                setupGlobalEventListeners();
+                console.error('❌ Failed to load assessment items');
+            }
+        } catch (error) {
+            console.error('❌ Initialization error:', error);
+            showError('初期化エラーが発生しました', [error.message]);
+        }
+    }
+    
+    // ===== DOMContentLoaded =====
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize);
+    } else {
+        initialize();
+    }
+    
+})();
