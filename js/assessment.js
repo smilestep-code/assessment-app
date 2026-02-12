@@ -1,9 +1,9 @@
 // 就労選択支援サービス - アセスメントアプリケーション
-// Main JavaScript v202602120200
+// Main JavaScript v202602120230
 (function() {
     'use strict';
     
-    const VERSION = '202602120200';
+    const VERSION = '202602120230';
     console.log(`Assessment App v${VERSION} initializing...`);
     
     // ===== 設定 =====
@@ -18,7 +18,7 @@
     };
     let currentLoadedAssessmentId = null;
     let categoryCharts = new Map();
-    let delegationInitialized = false; // イベントデリゲーション重複防止フラグ
+    let eventDelegationInitialized = false; // イベントデリゲーション重複防止フラグ
     
     // ===== 評価基準データ =====
     const scoreCriteria = {
@@ -248,24 +248,36 @@
         
         container.innerHTML = html;
         
-        // イベントデリゲーションは初回のみ設定
-        if (!delegationInitialized) {
-            setupEventDelegation();
-            delegationInitialized = true;
-        }
+        // イベントデリゲーションを呼ぶ（初回のみ登録されるようガード済み）
+        setupEventDelegation();
     }
     
-    // ===== イベントデリゲーション（1回のみ登録） =====
+    // ===== イベントデリゲーション（初回のみ登録・多重登録防止） =====
     function setupEventDelegation() {
-        const container = document.getElementById('assessmentItems');
+        // 既に登録済みなら何もしない（多重登録防止）
+        if (eventDelegationInitialized) {
+            console.log('⚠️ イベントデリゲーションは既に登録済み（スキップ）');
+            return;
+        }
         
-        // スコアボタンのクリック
+        const container = document.getElementById('assessmentItems');
+        if (!container) {
+            console.error('❌ #assessmentItems コンテナが見つかりません');
+            return;
+        }
+        
+        // スコアボタンとメモボタンのクリック
         container.addEventListener('click', function(e) {
+            // スコアボタン
             const scoreBtn = e.target.closest('.score-btn');
             if (scoreBtn) {
                 const score = parseInt(scoreBtn.dataset.score);
-                const itemIndex = parseInt(scoreBtn.closest('.score-buttons').dataset.itemIndex);
-                selectScore(itemIndex, score);
+                const scoreButtonsGroup = scoreBtn.closest('.score-buttons');
+                if (scoreButtonsGroup) {
+                    const itemIndex = parseInt(scoreButtonsGroup.dataset.itemIndex);
+                    selectScore(itemIndex, score);
+                }
+                return;
             }
             
             // メモトグルボタン
@@ -273,6 +285,7 @@
             if (toggleMemoBtn) {
                 const itemIndex = parseInt(toggleMemoBtn.dataset.itemIndex);
                 toggleMemo(itemIndex);
+                return;
             }
         });
         
@@ -303,7 +316,9 @@
             }
         });
         
-        console.log('✅ イベントデリゲーション設定完了（1回のみ）');
+        // 登録完了フラグ
+        eventDelegationInitialized = true;
+        console.log('✅ イベントデリゲーション登録完了（初回のみ・多重登録なし）');
     }
     
     // ===== スコア選択 =====
@@ -881,7 +896,7 @@
         link.click();
     }
     
-    // ===== イベントリスナーの設定 =====
+    // ===== グローバルイベントリスナーの設定 =====
     function setupGlobalEventListeners() {
         document.getElementById('toggleCriteria')?.addEventListener('click', function() {
             document.getElementById('criteriaPanel').classList.toggle('d-none');
@@ -913,9 +928,9 @@
             const loaded = await loadAssessmentItems();
             
             if (loaded && assessmentItems.length > 0) {
+                setupGlobalEventListeners();
                 renderAssessmentItems();
                 loadPastAssessments();
-                setupGlobalEventListeners();
                 console.log(`✅ App initialized successfully (${assessmentItems.length} items)`);
             } else {
                 setupGlobalEventListeners();
