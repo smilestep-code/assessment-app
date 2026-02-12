@@ -1,9 +1,9 @@
 // 就労選択支援サービス - アセスメントアプリケーション
-// Main JavaScript v202602070900
+// Main JavaScript v202602120100
 (function() {
     'use strict';
     
-    const VERSION = '202602070900';
+    const VERSION = '202602120100';
     console.log(`Assessment App v${VERSION} initializing...`);
     
     // ===== 設定 =====
@@ -209,7 +209,7 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="memo-section mt-3 ${currentMemo ? '' : 'd-none'}" data-memo-section="${item.index}">
+                            <div class="memo-section mt-3 d-none" data-memo-section="${item.index}">
                                 <textarea class="form-control memo-textarea" 
                                           rows="2" 
                                           placeholder="メモや所見を入力..." 
@@ -462,7 +462,7 @@
         document.getElementById('endDate').value = assessment.basicInfo.endDate;
         
         currentAssessment.scores = { ...assessment.scores };
-        currentAssessment.memos = { ...assessment.memos };
+        currentAssessment.memos = { ...(assessment.memos || {}) };
         currentLoadedAssessmentId = id;
         
         renderAssessmentItems();
@@ -634,6 +634,174 @@
         link.click();
     }
     
+    // ===== CSV読込 =====
+    function handleImportCSV() {
+        document.getElementById('importCSVFile').click();
+    }
+    
+    function processImportedCSV(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                let text = e.target.result;
+                
+                // BOM削除
+                if (text.charCodeAt(0) === 0xFEFF) {
+                    text = text.substring(1);
+                }
+                
+                const lines = text.split(/\r?\n/).filter(line => line.trim());
+                if (lines.length < 2) {
+                    alert('❌ CSV形式が不正です（ヘッダ行とデータ行が必要）');
+                    return;
+                }
+                
+                // CSVパース（ダブルクォート対応）
+                function parseCSVLine(line) {
+                    const result = [];
+                    let current = '';
+                    let inQuote = false;
+                    
+                    for (let i = 0; i < line.length; i++) {
+                        const char = line[i];
+                        const nextChar = line[i + 1];
+                        
+                        if (char === '"') {
+                            if (inQuote && nextChar === '"') {
+                                current += '"';
+                                i++;
+                            } else {
+                                inQuote = !inQuote;
+                            }
+                        } else if (char === ',' && !inQuote) {
+                            result.push(current);
+                            current = '';
+                        } else {
+                            current += char;
+                        }
+                    }
+                    result.push(current);
+                    return result;
+                }
+                
+                const header = parseCSVLine(lines[0]);
+                
+                // ヘッダ列位置を特定
+                const colMap = {};
+                const expectedCols = ['記入日', '利用者名', '管理番号', '評価実施者名', '評価期間開始', '評価期間終了', 'カテゴリ', '項目', 'スコア', '評価', 'メモ'];
+                expectedCols.forEach(col => {
+                    const idx = header.indexOf(col);
+                    if (idx >= 0) colMap[col] = idx;
+                });
+                
+                if (!colMap['カテゴリ'] || !colMap['項目'] || !colMap['スコア']) {
+                    alert('❌ CSV形式が不正です（必須列: カテゴリ, 項目, スコア）');
+                    return;
+                }
+                
+                // データ行を解析
+                const dataRows = lines.slice(1).map(line => parseCSVLine(line));
+                if (dataRows.length === 0) {
+                    alert('❌ データ行がありません');
+                    return;
+                }
+                
+                // 基本情報（最初の行から取得）
+                const firstRow = dataRows[0];
+                const basicInfo = {
+                    entryDate: colMap['記入日'] !== undefined ? firstRow[colMap['記入日']] : '',
+                    userName: colMap['利用者名'] !== undefined ? firstRow[colMap['利用者名']] : '',
+                    managementNumber: colMap['管理番号'] !== undefined ? firstRow[colMap['管理番号']] : '',
+                    evaluatorName: colMap['評価実施者名'] !== undefined ? firstRow[colMap['評価実施者名']] : '',
+                    startDate: colMap['評価期間開始'] !== undefined ? firstRow[colMap['評価期間開始']] : '',
+                    endDate: colMap['評価期間終了'] !== undefined ? firstRow[colMap['評価期間終了']] : ''
+                };
+                
+                if (!basicInfo.userName) {
+                    alert('❌ 利用者名が取得できません');
+                    return;
+                }
+                
+                // items.json の項目とマッチング
+                const newScores = {};
+                const newMemos = {};
+                let matchCount = 0;
+                
+                dataRows.forEach(row => {
+                    const category = row[colMap['カテゴリ']];
+                    const itemName = row[colMap['項目']];
+                    const score = parseInt(row[colMap['スコア']]);
+                    const memo = colMap['メモ'] !== undefined ? row[colMap['メモ']] : '';
+                    
+                    // items.json から該当項目を検索
+                    const itemIndex = assessmentItems.findIndex(item => 
+                        item.category === category && item.name === itemName
+                    );
+                    
+                    if (itemIndex >= 0 && score >= 1 && score <= 5) {
+                        newScores[itemIndex] = score;
+                        if (memo) newMemos[itemIndex] = memo;
+                        matchCount++;
+                    }
+                });
+                
+                if (matchCount === 0) {
+                    alert('❌ 項目が一致しませんでした\n\nCSVのカテゴリ名・項目名が現在のitems.jsonと一致しているか確認してください');
+                    return;
+                }
+                
+                // 履歴として保存
+                const assessmentData = {
+                    id: Date.now(),
+                    basicInfo: basicInfo,
+                    scores: newScores,
+                    memos: newMemos,
+                    items: assessmentItems.map(item => ({ ...item })),
+                    timestamp: new Date().toISOString()
+                };
+                
+                const userAssessments = getUserAssessments(basicInfo.userName);
+                userAssessments.push(assessmentData);
+                
+                if (saveUserAssessments(basicInfo.userName, userAssessments)) {
+                    alert(`✅ CSV読み込み成功\n\n利用者: ${basicInfo.userName}\n一致件数: ${matchCount}/${dataRows.length}\n評価ID: ${assessmentData.id}`);
+                    
+                    // フォームに反映
+                    document.getElementById('userName').value = basicInfo.userName;
+                    document.getElementById('managementNumber').value = basicInfo.managementNumber;
+                    document.getElementById('evaluatorName').value = basicInfo.evaluatorName;
+                    document.getElementById('entryDate').value = basicInfo.entryDate;
+                    document.getElementById('startDate').value = basicInfo.startDate;
+                    document.getElementById('endDate').value = basicInfo.endDate;
+                    
+                    currentAssessment.scores = { ...newScores };
+                    currentAssessment.memos = { ...newMemos };
+                    currentLoadedAssessmentId = assessmentData.id;
+                    
+                    renderAssessmentItems();
+                    loadPastAssessments();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                    alert('❌ 保存に失敗しました');
+                }
+            } catch (error) {
+                console.error('CSV読み込みエラー:', error);
+                alert(`❌ CSV読み込み中にエラーが発生しました\n\n${error.message}`);
+            } finally {
+                event.target.value = '';
+            }
+        };
+        
+        reader.onerror = function() {
+            alert('❌ ファイル読み込みに失敗しました');
+        };
+        
+        reader.readAsText(file, 'UTF-8');
+    }
+    
     // ===== CSV出力 =====
     function handleExportCSV() {
         const userName = getCurrentUserName();
@@ -685,6 +853,8 @@
         document.getElementById('viewResults')?.addEventListener('click', viewResults);
         document.getElementById('viewChart')?.addEventListener('click', viewChart);
         document.getElementById('exportCSV')?.addEventListener('click', handleExportCSV);
+        document.getElementById('importCSV')?.addEventListener('click', handleImportCSV);
+        document.getElementById('importCSVFile')?.addEventListener('change', processImportedCSV);
         document.getElementById('printResults')?.addEventListener('click', () => window.print());
         document.getElementById('saveChartImage')?.addEventListener('click', function() {
             const first = Array.from(categoryCharts.keys())[0];
