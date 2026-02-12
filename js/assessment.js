@@ -1,9 +1,9 @@
 // 就労選択支援サービス - アセスメントアプリケーション
-// Main JavaScript v202602120100
+// Main JavaScript v202602120200
 (function() {
     'use strict';
     
-    const VERSION = '202602120100';
+    const VERSION = '202602120200';
     console.log(`Assessment App v${VERSION} initializing...`);
     
     // ===== 設定 =====
@@ -18,6 +18,7 @@
     };
     let currentLoadedAssessmentId = null;
     let categoryCharts = new Map();
+    let delegationInitialized = false; // イベントデリゲーション重複防止フラグ
     
     // ===== 評価基準データ =====
     const scoreCriteria = {
@@ -31,6 +32,28 @@
     // ===== スコア別カラー取得 =====
     function getScoreColor(score) {
         return scoreCriteria[score]?.color || '#94a3b8';
+    }
+    
+    // ===== 日付正規化（YYYY-MM-DD形式に変換） =====
+    function normalizeDateToISO(dateStr) {
+        if (!dateStr || typeof dateStr !== 'string') return '';
+        
+        // すでに YYYY-MM-DD 形式ならそのまま返す
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
+            return dateStr.trim();
+        }
+        
+        // YYYY/M/D 形式を YYYY-MM-DD に変換
+        const match = dateStr.trim().match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+        if (match) {
+            const year = match[1];
+            const month = String(match[2]).padStart(2, '0');
+            const day = String(match[3]).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        
+        // 変換できない場合は空文字を返す
+        return '';
     }
     
     // ===== LocalStorage管理（利用者単位） =====
@@ -145,7 +168,7 @@
         container.insertBefore(warning, container.firstChild);
     }
     
-    // ===== 評価項目の表示（イベントデリゲーション） =====
+    // ===== 評価項目の表示 =====
     function renderAssessmentItems() {
         const container = document.getElementById('assessmentItems');
         
@@ -209,7 +232,7 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="memo-section mt-3 d-none" data-memo-section="${item.index}">
+                            <div class="memo-section mt-3 ${currentMemo ? '' : 'd-none'}" data-memo-section="${item.index}">
                                 <textarea class="form-control memo-textarea" 
                                           rows="2" 
                                           placeholder="メモや所見を入力..." 
@@ -225,11 +248,14 @@
         
         container.innerHTML = html;
         
-        // イベントデリゲーション設定
-        setupEventDelegation();
+        // イベントデリゲーションは初回のみ設定
+        if (!delegationInitialized) {
+            setupEventDelegation();
+            delegationInitialized = true;
+        }
     }
     
-    // ===== イベントデリゲーション（onclick不使用） =====
+    // ===== イベントデリゲーション（1回のみ登録） =====
     function setupEventDelegation() {
         const container = document.getElementById('assessmentItems');
         
@@ -250,7 +276,16 @@
             }
         });
         
-        // メモのchange/blur
+        // メモのinput（リアルタイム保存）
+        container.addEventListener('input', function(e) {
+            const textarea = e.target.closest('.memo-textarea');
+            if (textarea) {
+                const itemIndex = parseInt(textarea.dataset.itemIndex);
+                saveMemo(itemIndex, textarea.value);
+            }
+        });
+        
+        // メモのblur（フォーカス外れ時保存）
         container.addEventListener('blur', function(e) {
             const textarea = e.target.closest('.memo-textarea');
             if (textarea) {
@@ -259,6 +294,7 @@
             }
         }, true);
         
+        // メモのchange（変更時保存）
         container.addEventListener('change', function(e) {
             const textarea = e.target.closest('.memo-textarea');
             if (textarea) {
@@ -266,6 +302,8 @@
                 saveMemo(itemIndex, textarea.value);
             }
         });
+        
+        console.log('✅ イベントデリゲーション設定完了（1回のみ）');
     }
     
     // ===== スコア選択 =====
@@ -454,12 +492,13 @@
             return;
         }
         
-        document.getElementById('userName').value = assessment.basicInfo.userName;
+        // 日付フィールドを正規化してセット
+        document.getElementById('userName').value = assessment.basicInfo.userName || '';
         document.getElementById('managementNumber').value = assessment.basicInfo.managementNumber || '';
-        document.getElementById('evaluatorName').value = assessment.basicInfo.evaluatorName;
-        document.getElementById('entryDate').value = assessment.basicInfo.entryDate;
-        document.getElementById('startDate').value = assessment.basicInfo.startDate;
-        document.getElementById('endDate').value = assessment.basicInfo.endDate;
+        document.getElementById('evaluatorName').value = assessment.basicInfo.evaluatorName || '';
+        document.getElementById('entryDate').value = normalizeDateToISO(assessment.basicInfo.entryDate);
+        document.getElementById('startDate').value = normalizeDateToISO(assessment.basicInfo.startDate);
+        document.getElementById('endDate').value = normalizeDateToISO(assessment.basicInfo.endDate);
         
         currentAssessment.scores = { ...assessment.scores };
         currentAssessment.memos = { ...(assessment.memos || {}) };
@@ -769,13 +808,13 @@
                 if (saveUserAssessments(basicInfo.userName, userAssessments)) {
                     alert(`✅ CSV読み込み成功\n\n利用者: ${basicInfo.userName}\n一致件数: ${matchCount}/${dataRows.length}\n評価ID: ${assessmentData.id}`);
                     
-                    // フォームに反映
+                    // フォームに反映（日付を正規化）
                     document.getElementById('userName').value = basicInfo.userName;
                     document.getElementById('managementNumber').value = basicInfo.managementNumber;
                     document.getElementById('evaluatorName').value = basicInfo.evaluatorName;
-                    document.getElementById('entryDate').value = basicInfo.entryDate;
-                    document.getElementById('startDate').value = basicInfo.startDate;
-                    document.getElementById('endDate').value = basicInfo.endDate;
+                    document.getElementById('entryDate').value = normalizeDateToISO(basicInfo.entryDate);
+                    document.getElementById('startDate').value = normalizeDateToISO(basicInfo.startDate);
+                    document.getElementById('endDate').value = normalizeDateToISO(basicInfo.endDate);
                     
                     currentAssessment.scores = { ...newScores };
                     currentAssessment.memos = { ...newMemos };
