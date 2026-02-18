@@ -902,7 +902,11 @@
                     'ヘッダ': header
                 });
                 
+                // ===== 【RAW LINE TRACE】生のCSV行を保持 =====
+                const rawLines = lines.slice(1); // ヘッダを除く
+                
                 dataRows.forEach((row, rowIndex) => {
+                    const rawLine = rawLines[rowIndex]; // 対応する生の行
                     const categoryRaw = row[colMap['カテゴリ']];
                     const itemNameRaw = row[colMap['項目']];
                     
@@ -934,14 +938,20 @@
                     if (categoryTrim === "職業生活" && itemTrim === "欠席等の連絡") {
                         console.log("\n=== CSV->scoreMap DEBUG START ===");
                         console.log("lineNo:", rowIndex + 2);  // +2 = ヘッダ(1) + 0-index補正(1)
-                        console.log("raw line (split result):", row);
+                        console.log("🔥🔥🔥 RAW LINE (before parse):", JSON.stringify(rawLine));
+                        console.log("parsed columns array:", row);
+                        console.log("parsed columns.length:", row.length);
                         console.log("columns:");
                         console.log("  カテゴリ:", JSON.stringify(categoryRaw));
                         console.log("  項目:", JSON.stringify(itemNameRaw));
                         console.log("  スコア列index:", colMap['スコア']);
                         console.log("  評価列index:", colMap['評価']);
-                        console.log("scoreRaw:", scoreRaw, "json:", JSON.stringify(scoreRaw));
-                        console.log("scoreRaw source: row[" + colMap['スコア'] + "]");
+                        console.log("  メモ列index:", colMap['メモ']);
+                        console.log("🔥🔥🔥 scoreRaw = row[" + colMap['スコア'] + "]:", scoreRaw, "json:", JSON.stringify(scoreRaw));
+                        console.log("  row配列の全要素:");
+                        row.forEach((cell, idx) => {
+                            console.log(`    [${idx}]: ${JSON.stringify(cell)}`);
+                        });
                         console.log("評価列の値:", hyokaText, "json:", JSON.stringify(hyokaText), "← スコア計算には使用しない");
                         console.log("score算出過程:");
                         console.log("  1. trim:", JSON.stringify(scoreTrimmed));
