@@ -835,6 +835,10 @@
                 
                 const header = parseCSVLine(lines[0]);
                 
+                console.log('\n📊 CSVヘッダー解析:');
+                console.log('  header:', header);
+                console.log('  header.length:', header.length);
+                
                 // ヘッダ列位置を特定
                 const colMap = {};
                 const expectedCols = ['記入日', '利用者名', '管理番号', '評価実施者名', '評価期間開始', '評価期間終了', 'カテゴリ', '項目', 'スコア', '評価', 'メモ'];
@@ -842,6 +846,8 @@
                     const idx = header.indexOf(col);
                     if (idx >= 0) colMap[col] = idx;
                 });
+                
+                console.log('  colMap:', colMap);
                 
                 if (colMap['カテゴリ'] === undefined || colMap['項目'] === undefined || colMap['スコア'] === undefined) {
                     alert('❌ CSV形式が不正です（必須列: カテゴリ, 項目, スコア）');
@@ -854,6 +860,9 @@
                     alert('❌ データ行がありません');
                     return;
                 }
+                
+                console.log('  データ行数:', dataRows.length);
+                console.log('  最初のデータ行:', dataRows[0]);
                 
                 // 基本情報（最初の行から取得）
                 const firstRow = dataRows[0];
@@ -884,6 +893,11 @@
                     const categoryRaw = row[colMap['カテゴリ']];
                     const itemNameRaw = row[colMap['項目']];
                     
+                    // ===== 【決着用デバッグ】対象項目の判定 =====
+                    const categoryNorm = normalizeString(categoryRaw);
+                    const itemNorm = normalizeString(itemNameRaw);
+                    const isDebugTarget = (categoryNorm === '職業生活' && itemNorm === '欠席等の連絡');
+                    
                     // ===== 【重要】「スコア」列のみ使用（「評価」列は使用しない） =====
                     const scoreRaw = row[colMap['スコア']];  // ← 必ず「スコア」列のみ
                     
@@ -891,43 +905,29 @@
                     const hyokaText = colMap['評価'] !== undefined ? row[colMap['評価']] : '';
                     const memo = colMap['メモ'] !== undefined ? row[colMap['メモ']] : '';
                     
-                    // ===== 【デバッグ】特定項目の詳細ログ =====
-                    const isDebugTarget = (categoryRaw && categoryRaw.includes('職業生活')) && 
-                                         (itemNameRaw && itemNameRaw.includes('欠席'));
-                    
+                    // ===== 【決着用デバッグ】ROW DEBUG START =====
                     if (isDebugTarget) {
-                        console.log(`\n🔍 [行${rowIndex + 2}] デバッグ対象項目を検出:`);
-                        console.log('  categoryRaw:', JSON.stringify(categoryRaw));
-                        console.log('  itemNameRaw:', JSON.stringify(itemNameRaw));
-                        console.log('  【検証】CSV raw score:', JSON.stringify(scoreRaw));
-                        console.log('  【参考】評価列の値:', JSON.stringify(hyokaText), '← スコア計算には使用しない');
+                        console.log("\n=== ROW DEBUG START ===");
+                        console.log("row raw:", row);
+                        console.log("colMap:", colMap);
+                        console.log("row.length:", row.length);
+                        console.log("colMap['スコア'] index:", colMap['スコア']);
+                        console.log("colMap['評価'] index:", colMap['評価']);
+                        console.log("row['スコア'] raw:", scoreRaw, "json:", JSON.stringify(scoreRaw));
+                        console.log("row['評価'] raw:", hyokaText, "json:", JSON.stringify(hyokaText));
                     }
                     
                     // 一意キーを生成（正規化済み）
-                    const key = makeItemKey(categoryRaw, itemNameRaw, isDebugTarget);
+                    const key = makeItemKey(categoryRaw, itemNameRaw, false);
                     
-                    // ===== 【重要】スコア変換: 「スコア」列の値のみ使用 =====
-                    // 1. 文字列をトリム
-                    // 2. 全角数字を半角に変換
-                    // 3. Number()で数値化
-                    // 4. 1〜5の範囲チェック（範囲外はnull）
-                    const scoreNormalized = String(scoreRaw || '').trim();
-                    const scoreConverted = scoreNormalized.replace(/[０-９]/g, s => 
-                        String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
-                    );
-                    const scoreNumber = Number(scoreConverted);
-                    const score = (!isNaN(scoreNumber) && scoreNumber >= 1 && scoreNumber <= 5) 
-                        ? scoreNumber 
-                        : null;
+                    // ===== 【重要】スコア変換: normalizeNumber()を使用 =====
+                    const score = normalizeNumber(scoreRaw);
                     
+                    // ===== 【決着用デバッグ】BEFORE SET =====
                     if (isDebugTarget) {
-                        console.log('  【検証】最終採用score:', score);
-                        console.log('  変換過程:');
-                        console.log('    1. raw:', JSON.stringify(scoreRaw));
-                        console.log('    2. trimmed:', JSON.stringify(scoreNormalized));
-                        console.log('    3. 全角→半角:', JSON.stringify(scoreConverted));
-                        console.log('    4. Number():', scoreNumber);
-                        console.log('    5. 範囲チェック(1〜5):', score);
+                        console.log("computed score BEFORE SET:", score, "type:", typeof score);
+                        console.log("key:", key);
+                        console.log("=== ROW DEBUG END ===");
                     }
                     
                     // 重複チェック（詳細ログ）
@@ -969,13 +969,19 @@
                 console.log(`対象キー(JSON): ${JSON.stringify(debugKey)}`);
                 console.log(`scoreMapに存在: ${scoreMap.has(debugKey)}`);
                 if (scoreMap.has(debugKey)) {
-                    console.log(`scoreMap.get("${debugKey}") = ${scoreMap.get(debugKey)}`);
+                    const finalScore = scoreMap.get(debugKey);
+                    console.log(`✅ scoreMap.get("${debugKey}") = ${finalScore} (type: ${typeof finalScore})`);
+                    if (finalScore === 5) {
+                        console.log('🎉🎉🎉 達成条件クリア：スコアが5です！ 🎉🎉🎉');
+                    } else {
+                        console.error(`❌ 達成条件未達成：スコアが ${finalScore} です（期待値: 5）`);
+                    }
                 } else {
                     console.log('⚠️ scoreMapに該当キーが存在しません');
                     console.log('scoreMap内の全キー（職業生活カテゴリ）:');
                     const syokugyouKeys = [...scoreMap.keys()].filter(k => k.startsWith('職業生活'));
                     syokugyouKeys.forEach(k => {
-                        console.log(`  - キー: "${k}"`);
+                        console.log(`  - キー: "${k}" → スコア: ${scoreMap.get(k)}`);
                         console.log(`    JSON: ${JSON.stringify(k)}`);
                     });
                 }
