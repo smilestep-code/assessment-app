@@ -908,20 +908,51 @@
                     console.table(categoryEntries);
                 }
                 
+                // ===== 【デバッグ】特定キーの追跡 =====
+                const debugKey = '職業生活__欠席等の連絡';
+                console.log('\n🔍🔍🔍 [特定キー追跡開始] 🔍🔍🔍');
+                console.log(`対象キー: "${debugKey}"`);
+                console.log(`scoreMapに存在: ${scoreMap.has(debugKey)}`);
+                if (scoreMap.has(debugKey)) {
+                    console.log(`scoreMap.get("${debugKey}") = ${scoreMap.get(debugKey)}`);
+                } else {
+                    console.log('⚠️ scoreMapに該当キーが存在しません');
+                    console.log('scoreMap内の全キー（職業生活カテゴリ）:');
+                    const syokugyouKeys = [...scoreMap.keys()].filter(k => k.startsWith('職業生活'));
+                    syokugyouKeys.forEach(k => console.log(`  - "${k}")`));
+                }
+                
                 // ===== 【重要】assessmentItemsを走査してindexベースのscores/memosを構築 =====
                 const newScores = {};
                 const newMemos = {};
                 let matchCount = 0;
                 const restoreLog = [];  // UI復元検証ログ
+                let debugKeyIndex = -1;  // デバッグ用: 特定キーのindex
                 
                 assessmentItems.forEach((item, index) => {
                     const key = makeItemKey(item.category, item.name);
+                    
+                    // ===== 【デバッグ】特定キーのindex検出 =====
+                    if (key === debugKey) {
+                        debugKeyIndex = index;
+                        console.log(`\n✅ 対象項目を発見:`);
+                        console.log(`  カテゴリ: "${item.category}"`);
+                        console.log(`  項目名: "${item.name}"`);
+                        console.log(`  index: ${index}`);
+                        console.log(`  生成されたキー: "${key}"`);
+                    }
                     
                     if (scoreMap.has(key)) {
                         const score = scoreMap.get(key);
                         if (score !== null) {
                             newScores[index] = score;
                             matchCount++;
+                            
+                            // ===== 【デバッグ】特定キーのスコア代入 =====
+                            if (key === debugKey) {
+                                console.log(`\n📝 newScoresへの代入:`);
+                                console.log(`  newScores[${index}] = ${score}`);
+                            }
                             
                             // 復元検証ログ（最初の10件）
                             if (restoreLog.length < 10) {
@@ -980,7 +1011,45 @@
                     currentAssessment.memos = { ...newMemos };
                     currentLoadedAssessmentId = assessmentData.id;
                     
+                    // ===== 【デバッグ】currentAssessment.scoresへの反映確認 =====
+                    if (debugKeyIndex >= 0) {
+                        console.log(`\n📊 currentAssessment.scoresへの反映:`);
+                        console.log(`  currentAssessment.scores[${debugKeyIndex}] = ${currentAssessment.scores[debugKeyIndex]}`);
+                    }
+                    
                     renderAssessmentItems();
+                    
+                    // ===== 【デバッグ】UI描画後のラジオボタン状態確認 =====
+                    if (debugKeyIndex >= 0) {
+                        setTimeout(() => {
+                            console.log(`\n🎨 UI描画後のラジオボタン状態:`);
+                            console.log(`  対象index: ${debugKeyIndex}`);
+                            
+                            const scoreButtons = document.querySelector(`[data-item-index="${debugKeyIndex}"]`);
+                            if (scoreButtons) {
+                                const activeBtn = scoreButtons.querySelector('.score-btn.active');
+                                if (activeBtn) {
+                                    const selectedScore = parseInt(activeBtn.getAttribute('data-score'));
+                                    console.log(`  選択中のスコア（UIラジオボタン）: ${selectedScore}`);
+                                    console.log(`  期待値（scoreMap）: ${scoreMap.get(debugKey)}`);
+                                    console.log(`  期待値（newScores）: ${newScores[debugKeyIndex]}`);
+                                    console.log(`  期待値（currentAssessment）: ${currentAssessment.scores[debugKeyIndex]}`);
+                                    
+                                    if (selectedScore === scoreMap.get(debugKey)) {
+                                        console.log(`  ✅ 一致しています！`);
+                                    } else {
+                                        console.error(`  ❌ 不一致！ UI=${selectedScore}, scoreMap=${scoreMap.get(debugKey)}`);
+                                    }
+                                } else {
+                                    console.log(`  ⚠️ activeなボタンが見つかりません（未選択状態）`);
+                                }
+                            } else {
+                                console.error(`  ❌ data-item-index="${debugKeyIndex}" のボタングループが見つかりません`);
+                            }
+                            console.log('🔍🔍🔍 [特定キー追跡終了] 🔍🔍🔍\n');
+                        }, 100);
+                    }
+                    
                     loadPastAssessments();
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 } else {
