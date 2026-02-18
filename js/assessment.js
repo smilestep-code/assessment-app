@@ -3,7 +3,7 @@
 (function() {
     'use strict';
     
-    const VERSION = '202602120240';
+    const VERSION = '202602120250';
     console.log(`Assessment App v${VERSION} initializing...`);
     
     // ===== 設定 =====
@@ -613,7 +613,7 @@
         const container = document.getElementById('chartContainer');
         container.innerHTML = '';
         
-        // カテゴリ別に定義項目を抽出（index順依存を排除）
+        // カテゴリ別に定義項目を抽出（assessmentItems = 固定順の定義配列）
         const categorizedItems = {};
         assessmentItems.forEach((item, index) => {
             if (!categorizedItems[item.category]) {
@@ -629,24 +629,28 @@
         Object.keys(categorizedItems).forEach(category => {
             const allItemsInCategory = categorizedItems[category];
             
-            // スコアMapを作成（カテゴリ+項目名 -> スコア）
-            const scoreMap = new Map();
-            allItemsInCategory.forEach(item => {
-                const key = makeItemKey(item.category, item.name);
-                const score = currentAssessment.scores[item.index];
-                scoreMap.set(key, score !== undefined ? score : null);
-            });
-            
-            // 定義項目順にlabelsとdataを生成（未入力はnull）
+            // ===== 【重要】固定長配列生成：全定義項目を必ず含む =====
+            // 未入力項目も配列に含め、nullで保持（詰めない）
             const labels = [];
             const data = [];
             
             allItemsInCategory.forEach(item => {
-                const key = makeItemKey(item.category, item.name);
-                const score = scoreMap.get(key);
+                const score = currentAssessment.scores[item.index];
                 
+                // 全項目をlabelsに追加（未入力でも必ず追加）
                 labels.push(item.name);
-                data.push(score); // nullのまま保持（0や削除しない）
+                
+                // 未入力はnull（0ではない）
+                data.push(score !== undefined && score !== null ? score : null);
+            });
+            
+            // デバッグ情報をコンソール出力
+            console.log(`📊 [${category}] 固定長配列生成:`, {
+                項目数: allItemsInCategory.length,
+                labels数: labels.length,
+                data数: data.length,
+                未入力項目数: data.filter(v => v === null).length,
+                入力済項目数: data.filter(v => v !== null).length
             });
             
             // 色配列（nullはグレー）
@@ -682,13 +686,18 @@
                         backgroundColor: colors,
                         borderWidth: 0,
                         barThickness: BAR_HEIGHT,
-                        borderRadius: 4
+                        borderRadius: 4,
+                        // null値でも位置を保持（スキップしない）
+                        skipNull: false,
+                        parsing: false
                     }]
                 },
                 options: {
                     indexAxis: 'y',
                     responsive: false,
                     maintainAspectRatio: false,
+                    // null値を詰めずに位置保持
+                    parsing: false,
                     plugins: {
                         legend: { display: false },
                         datalabels: {
@@ -696,12 +705,25 @@
                             font: { size: 14, weight: 'bold' },
                             anchor: 'center',
                             align: 'center',
-                            formatter: (v) => v === null ? '' : v // nullは表示しない
+                            // nullは空文字表示（ラベルなし）だが位置は保持
+                            formatter: (v) => v === null || v === undefined ? '' : v
                         }
                     },
                     scales: {
-                        x: { min: 0, max: 5, ticks: { stepSize: 1 } },
-                        y: { display: false }
+                        x: { 
+                            min: 0, 
+                            max: 5, 
+                            ticks: { stepSize: 1 },
+                            // null値も軸に含める
+                            beginAtZero: true
+                        },
+                        y: { 
+                            display: false,
+                            // 全ラベルを表示（nullでもスキップしない）
+                            ticks: {
+                                autoSkip: false
+                            }
+                        }
                     }
                 },
                 plugins: [ChartDataLabels]
