@@ -799,52 +799,37 @@
                     text = text.substring(1);
                 }
                 
-                // ===== 【PAPAPARSE】header名でアクセス方式に統一 =====
-                console.log('\n🔥🔥🔥 PapaParse によるCSV読み込み開始 🔥🔥🔥');
+                // ===== 【最終リセット修正】split(',')で直接読む =====
+                console.log('\n🔥🔥🔥 CSV読み込み: split(\',\') 直接読取り方式 🔥🔥🔥');
                 
-                const parseResult = Papa.parse(text, {
-                    header: true,           // ヘッダ行を列名として使用
-                    skipEmptyLines: true,   // 空行をスキップ
-                    quoteChar: '"',         // 引用符
-                    delimiter: ',',         // 区切り文字
-                    dynamicTyping: false,   // 数値を自動変換しない（文字列として取得）
-                    transformHeader: (h) => h.replace(/^\uFEFF/, '').trim()  // ← BOMと空白を除去
-                });
-                
-                if (parseResult.errors && parseResult.errors.length > 0) {
-                    console.error('⚠️ PapaParse エラー:', parseResult.errors);
+                const lines = text.split(/\r?\n/).filter(line => line.trim());
+                if (lines.length < 2) {
+                    alert('❌ CSV形式が不正です（ヘッダ行とデータ行が必要）');
+                    return;
                 }
                 
-                const dataRows = parseResult.data;
+                const headerLine = lines[0];
+                const dataLines = lines.slice(1);
                 
-                console.log('📊 PapaParse 結果:');
-                console.log('  パース成功:', !parseResult.errors || parseResult.errors.length === 0);
-                console.log('  データ行数:', dataRows.length);
-                console.log('  ヘッダ列（フィールド名）:', parseResult.meta.fields);
-                console.log('  最初のデータ行（オブジェクト形式）:', dataRows[0]);
+                console.log('📊 CSV解析:');
+                console.log('  ヘッダ行:', headerLine);
+                console.log('  データ行数:', dataLines.length);
                 
-                if (dataRows.length === 0) {
+                if (dataLines.length === 0) {
                     alert('❌ データ行がありません');
                     return;
                 }
                 
-                // 必須列の存在チェック
-                const requiredCols = ['カテゴリ', '項目', 'スコア'];
-                const missingCols = requiredCols.filter(col => !(col in dataRows[0]));
-                if (missingCols.length > 0) {
-                    alert(`❌ CSV形式が不正です（必須列が不足: ${missingCols.join(', ')}）`);
-                    return;
-                }
-                
                 // 基本情報（最初の行から取得）
-                const firstRow = dataRows[0];
+                const firstLine = dataLines[0];
+                const firstColumns = firstLine.split(',');
                 const basicInfo = {
-                    entryDate: firstRow['記入日'] || '',
-                    userName: firstRow['利用者名'] || '',
-                    managementNumber: firstRow['管理番号'] || '',
-                    evaluatorName: firstRow['評価実施者名'] || '',
-                    startDate: firstRow['評価期間開始'] || '',
-                    endDate: firstRow['評価期間終了'] || ''
+                    entryDate: firstColumns[0]?.trim() || '',
+                    userName: firstColumns[1]?.trim() || '',
+                    managementNumber: firstColumns[2]?.trim() || '',
+                    evaluatorName: firstColumns[3]?.trim() || '',
+                    startDate: firstColumns[4]?.trim() || '',
+                    endDate: firstColumns[5]?.trim() || ''
                 };
                 
                 if (!basicInfo.userName) {
@@ -866,56 +851,38 @@
                 const importScoreMap = new Map();
                 const importMemoMap = new Map();
                 
-                console.log('\n🔥🔥🔥 importScoreMap構築開始（CSV専用・header名アクセス方式） 🔥🔥🔥');
+                console.log('\n🔥🔥🔥 importScoreMap構築: split(\',\') 直接読取り 🔥🔥🔥');
                 
-                dataRows.forEach((row, rowIndex) => {
-                    // ===== 【PAPAPARSE】header名で直接アクセス =====
-                    const categoryRaw = row['カテゴリ'];
-                    const itemNameRaw = row['項目'];
-                    const scoreRaw = row['スコア'];      // ← 必ず「スコア」列のみ
-                    const hyokaText = row['評価'] || '';  // 参照のみ（計算には使用しない）
-                    const memo = row['メモ'] || '';
+                dataLines.forEach((line, lineIndex) => {
+                    // ===== 【最終リセット修正】split(',')で直接 columns[8] を読む =====
+                    const columns = line.split(',');
+                    const category = columns[6]?.trim();
+                    const item = columns[7]?.trim();
+                    const scoreRaw = columns[8]?.trim();
+                    const memo = columns[10]?.trim() || '';
                     
-                    // ===== 【デバッグ（必須）】ROW PARSE DEBUG =====
-                    // 対象キーだけ必ず出す
-                    const categoryNorm = normalizeString(categoryRaw);
-                    const itemNorm = normalizeString(itemNameRaw);
-                    if (categoryNorm === "職業生活" && itemNorm === "欠席等の連絡") {
-                        console.log("\n=== ROW PARSE DEBUG START ===");
-                        console.log("row keys:", Object.keys(row));
-                        console.log("row['カテゴリ']:", row['カテゴリ']);
-                        console.log("row['項目']:", row['項目']);
-                        console.log("row['スコア']:", row['スコア'], "json:", JSON.stringify(row['スコア']));
-                        console.log("row['評価']:", row['評価'], "json:", JSON.stringify(row['評価']));
-                        console.log("=== ROW PARSE DEBUG END ===");
+                    // キー生成
+                    const key = makeItemKey(category, item, false);
+                    
+                    // ===== 【FORCE READ DEBUG】対象キーだけ =====
+                    if (category === "職業生活" && item === "欠席等の連絡") {
+                        console.log("\n=== FORCE READ DEBUG ===");
+                        console.log("columns[8]=", scoreRaw);
+                        console.log("full line=", line);
+                        console.log("key=", key);
+                        console.log("=== FORCE READ DEBUG END ===");
                     }
                     
-                    // 一意キーを生成（正規化込み）
-                    const key = makeItemKey(categoryRaw, itemNameRaw, false);
-                    
-                    // ===== 【強制・重要】スコア採用ルール =====
-                    // スコアは必ず row["スコア"] だけを使う。
-                    // 評価列から点数変換するフォールバックを完全に禁止（削除）。
-                    const scoreNum = Number(String(scoreRaw ?? '').trim());
-                    const score = (scoreNum >= 1 && scoreNum <= 5) ? scoreNum : null;
-                    // ※ scoreRawが取れない/NaNの時も「評価」から作らない。必ずnull。
-                    
-                    // ===== 【決着ログ（必須）】対象キー専用 =====
-                    if (key === "職業生活__欠席等の連絡") {
-                        console.log("\n=== CSV DEBUG ===");
-                        console.log("key:", key);
-                        console.log("row['スコア']=", row['スコア']);
-                        console.log("row['評価']=", row['評価']);
-                        console.log("computed score=", score);
-                        console.log("=== CSV DEBUG END ===");
-                    }
+                    // ===== 【スコア計算】columns[8]だけ使用（評価列は一切使わない） =====
+                    const score = Number(scoreRaw);
+                    const finalScore = (score >= 1 && score <= 5) ? score : null;
                     
                     // 重複キー警告
                     if (importScoreMap.has(key)) {
-                        console.warn("⚠️ DUPLICATE KEY:", key, "old:", importScoreMap.get(key), "new:", score, "row:", row);
+                        console.warn("⚠️ DUPLICATE KEY:", key, "old:", importScoreMap.get(key), "new:", finalScore);
                     }
                     
-                    importScoreMap.set(key, score);
+                    importScoreMap.set(key, finalScore);
                     
                     if (memo) {
                         importMemoMap.set(key, memo);
