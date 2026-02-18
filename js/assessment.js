@@ -794,14 +794,14 @@
             try {
                 let text = e.target.result;
                 
+                // CSV本文をグローバル変数に保存（DevToolsから確認可能）
+                window.__lastCsvText = text;
+                console.log("CSV TEXT LENGTH:", text.length);
+                
                 // BOM削除
                 if (text.charCodeAt(0) === 0xFEFF) {
                     text = text.substring(1);
                 }
-                
-                // CSV本文をグローバル変数に保存（DevToolsから確認可能）
-                window.__lastCsvText = text;
-                console.log("CSV TEXT LENGTH:", text.length);
                 
                 // ===== 【致命エラー修正】dataRows を必ず定義 =====
                 console.log('\n🔥🔥🔥 CSV読み込み: 動的ヘッダー解析方式 🔥🔥🔥');
