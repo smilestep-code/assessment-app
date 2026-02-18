@@ -3,7 +3,7 @@
 (function() {
     'use strict';
     
-    const VERSION = '202602120251';
+    const VERSION = '202602120252';
     console.log(`Assessment App v${VERSION} initializing...`);
     
     // ===== 設定 =====
@@ -57,6 +57,16 @@
         return '';
     }
     
+    // ===== 文字列正規化（キー突合用） =====
+    function normalizeString(str) {
+        if (!str) return '';
+        return String(str)
+            .trim()                           // 前後の空白を除去
+            .replace(/\u3000/g, ' ')            // 全角空白→半角空白
+            .replace(/\s+/g, ' ')               // 連続空白を１つに
+            .replace(/[\r\n]+/g, '');         // 改行除去
+    }
+    
     // ===== 全角数字を半角に正規化 =====
     function normalizeNumber(str) {
         if (!str) return null;
@@ -65,9 +75,11 @@
         return (!isNaN(num) && num >= 1 && num <= 5) ? num : null;
     }
     
-    // ===== 一意キー生成（カテゴリ + 項目名） =====
+    // ===== 一意キー生成（正規化済みカテゴリ + 項目名） =====
     function makeItemKey(category, itemName) {
-        return `${category}__${itemName}`;
+        const normCat = normalizeString(category);
+        const normItem = normalizeString(itemName);
+        return `${normCat}__${normItem}`;
     }
     
     // ===== LocalStorage管理（利用者単位） =====
@@ -847,21 +859,35 @@
                 const scoreMap = new Map();
                 const memoMap = new Map();
                 
-                dataRows.forEach(row => {
-                    const category = row[colMap['カテゴリ']];
-                    const itemName = row[colMap['項目']];
-                    const scoreStr = row[colMap['スコア']];
+                console.log('📊 CSV読み込み開始:', {
+                    'データ行数': dataRows.length,
+                    'ヘッダ': header
+                });
+                
+                dataRows.forEach((row, rowIndex) => {
+                    const categoryRaw = row[colMap['カテゴリ']];
+                    const itemNameRaw = row[colMap['項目']];
+                    const scoreRaw = row[colMap['スコア']];  // ← 「スコア」列を使用（「評価」ではない）
                     const memo = colMap['メモ'] !== undefined ? row[colMap['メモ']] : '';
                     
-                    // 一意キーを生成
-                    const key = makeItemKey(category, itemName);
+                    // 一意キーを生成（正規化済み）
+                    const key = makeItemKey(categoryRaw, itemNameRaw);
                     
-                    // スコアを正規化（全角→半角、trim、数値化）
-                    const score = normalizeNumber(scoreStr);
+                    // スコアを厳格に正規化
+                    const scoreNormalized = String(scoreRaw).trim();
+                    const score = normalizeNumber(scoreNormalized);
                     
-                    // 重複チェック
+                    // 重複チェック（詳細ログ）
                     if (scoreMap.has(key)) {
-                        console.warn(`⚠️ 重複キー検出: ${key}`);
+                        const oldScore = scoreMap.get(key);
+                        console.warn(`⚠️ 重複キー検出:`, {
+                            key: key,
+                            '旧score': oldScore,
+                            '新score': score,
+                            '行番号': rowIndex + 2,  // +2 = ヘッダ(1) + 0-index補正(1)
+                            '行内容': row
+                        });
+                        console.warn(`   → 後勝ち採用: ${oldScore} → ${score}`);
                     }
                     
                     scoreMap.set(key, score);
@@ -870,10 +896,23 @@
                     }
                 });
                 
+                // デバッグ: 特定カテゴリのスコアMapを表示（最初の20件）
+                const firstCategory = assessmentItems.length > 0 ? assessmentItems[0].category : null;
+                if (firstCategory) {
+                    const categoryEntries = [...scoreMap.entries()]
+                        .filter(([k, v]) => k.startsWith(firstCategory + '__'))
+                        .slice(0, 20)
+                        .map(([k, v]) => ({ key: k, score: v }));
+                    
+                    console.log(`📋 scoreMap サンプル [カテゴリ: ${firstCategory}]:`);
+                    console.table(categoryEntries);
+                }
+                
                 // ===== 【重要】assessmentItemsを走査してindexベースのscores/memosを構築 =====
                 const newScores = {};
                 const newMemos = {};
                 let matchCount = 0;
+                const restoreLog = [];  // UI復元検証ログ
                 
                 assessmentItems.forEach((item, index) => {
                     const key = makeItemKey(item.category, item.name);
@@ -883,6 +922,17 @@
                         if (score !== null) {
                             newScores[index] = score;
                             matchCount++;
+                            
+                            // 復元検証ログ（最初の10件）
+                            if (restoreLog.length < 10) {
+                                restoreLog.push({
+                                    index: index,
+                                    key: key,
+                                    'scoreMapから': score,
+                                    'UIに復元': newScores[index],
+                                    '一致': score === newScores[index] ? '✅' : '❌'
+                                });
+                            }
                         }
                     }
                     
@@ -890,6 +940,12 @@
                         newMemos[index] = memoMap.get(key);
                     }
                 });
+                
+                // UI復元検証ログを表示
+                if (restoreLog.length > 0) {
+                    console.log('🔍 UI復元検証 (最初の10件):');
+                    console.table(restoreLog);
+                }
                 
                 if (matchCount === 0) {
                     alert('❌ 項目が一致しませんでした\n\nCSVのカテゴリ名・項目名が現在のitems.jsonと一致しているか確認してください');
