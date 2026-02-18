@@ -785,6 +785,46 @@
         document.getElementById('importCSVFile').click();
     }
     
+    // ===== クォート対応のCSVパーサー =====
+    function unquoteCsvCell(s) {
+        if (s == null) return '';
+        s = String(s).trim();
+        if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+            s = s.slice(1, -1).replace(/""/g, '"');
+        }
+        return s;
+    }
+    
+    function parseCsvLine(line) {
+        const out = [];
+        let cur = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            
+            if (ch === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                    cur += '"';
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+                continue;
+            }
+            
+            if (ch === ',' && !inQuotes) {
+                out.push(cur);
+                cur = '';
+                continue;
+            }
+            
+            cur += ch;
+        }
+        out.push(cur);
+        return out.map(unquoteCsvCell);
+    }
+    
     function processImportedCSV(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -827,7 +867,7 @@
                 }
                 
                 // ===== 【スコア誤読修正】ヘッダーから動的に列インデックスを決める =====
-                const headers = header.split(',').map(h => h.replace(/^\uFEFF/, '').trim());
+                const headers = parseCsvLine(header).map(h => h.replace(/^\uFEFF/, '').trim());
                 const idxCategory = headers.indexOf('カテゴリ');
                 const idxItem = headers.indexOf('項目');
                 const idxScore = headers.indexOf('スコア');
@@ -849,7 +889,7 @@
                 
                 // 基本情報（最初の行から取得）
                 const firstLine = dataRows[0];
-                const firstColumns = firstLine.split(',');
+                const firstColumns = parseCsvLine(firstLine);
                 const basicInfo = {
                     entryDate: firstColumns[headers.indexOf('記入日')]?.trim() || '',
                     userName: firstColumns[headers.indexOf('利用者名')]?.trim() || '',
@@ -883,27 +923,27 @@
                 dataRows.forEach((line, lineIndex) => {
                     // ===== 【強制ログ1】「欠席等の連絡」を含む行を必ず表示 =====
                     if (line.includes("欠席等の連絡")) {
-                        const cols = line.split(",");
+                        const colsDebug = parseCsvLine(line);
                         console.log("\n=== HIT LINE RAW ===");
                         console.log("line:", line);
-                        console.log("cols.length:", cols.length);
-                        console.log("cols[6](カテゴリ想定):", cols[6]);
-                        console.log("cols[7](項目想定):", cols[7]);
-                        console.log("cols[8](スコア想定):", cols[8]);
-                        console.log("cols[9](評価想定):", cols[9]);
-                        console.log("cols(all):", cols);
+                        console.log("cols.length:", colsDebug.length);
+                        console.log("cols[6](カテゴリ想定):", colsDebug[6]);
+                        console.log("cols[7](項目想定):", colsDebug[7]);
+                        console.log("cols[8](スコア想定):", colsDebug[8]);
+                        console.log("cols[9](評価想定):", colsDebug[9]);
+                        console.log("cols(all):", colsDebug);
                         console.log("=== HIT LINE RAW END ===\n");
                     }
                     
-                    // ===== 【確実化】動的に列インデックスを使う =====
-                    const cols = line.split(',');
+                    // ===== 【確実化】動的に列インデックスを使う（クォート対応パーサー） =====
+                    const cols = parseCsvLine(line);
                     const category = (cols[idxCategory] ?? '').trim();
                     const item = (cols[idxItem] ?? '').trim();
                     const scoreRaw = (cols[idxScore] ?? '').trim();
                     const memo = idxMemo >= 0 ? (cols[idxMemo] ?? '').trim() : '';
                     
-                    // キー生成
-                    const key = category + '__' + item;
+                    // キー生成（makeItemKey を使用して items.json 側と同じ正規化）
+                    const key = makeItemKey(category, item);
                     
                     // ===== 【デバッグログ（必須）】対象キーだけ =====
                     if (key === '職業生活__欠席等の連絡') {
@@ -913,16 +953,15 @@
                         console.log('idxCategory:', idxCategory, 'category:', category);
                         console.log('idxItem:', idxItem, 'item:', item);
                         console.log('idxScore:', idxScore, 'scoreRaw:', scoreRaw);
+                        console.log('key (makeItemKey):', key);
                     }
                     
-                    // ===== 【スコア計算】cols[8]を直接採用（評価列からのフォールバック禁止） =====
-                    // 強制: cols[idxScore]のみを使用、評価列は無視
-                    const score = Number((cols[idxScore] ?? "").trim());
-                    const finalScore = (score >= 1 && score <= 5) ? score : null;
+                    // ===== 【スコア計算】normalizeNumber を使用（全角数字、"5.0" なども吸収） =====
+                    const finalScore = normalizeNumber(cols[idxScore]);
                     
                     // ===== 【デバッグログ続き】 =====
                     if (key === '職業生活__欠席等の連絡') {
-                        console.log('score:', score, 'finalScore:', finalScore);
+                        console.log('finalScore (normalizeNumber):', finalScore);
                         console.log('=== CSV LINE DEBUG END ===');
                     }
                     
