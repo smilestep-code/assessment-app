@@ -1041,9 +1041,33 @@
                     
                     if (scoreMap.has(key)) {
                         const score = scoreMap.get(key);
+                        
+                        // ===== 【NEWSCORES TRACE】index=25専用デバッグ =====
+                        if (index === 25 || key === debugKey) {
+                            console.log("\n=== NEWSCORES TRACE START ===");
+                            console.log("target index:", index);
+                            console.log("target key:", JSON.stringify(key));
+                            console.log("item.category:", JSON.stringify(item.category));
+                            console.log("item.name:", JSON.stringify(item.name));
+                            console.log("before newScores[" + index + "]:", newScores[index]);
+                            console.log("ASSIGN SOURCE:");
+                            console.log("  from: scoreMap.get(key)");
+                            console.log("  key:", JSON.stringify(key));
+                            console.log("  raw value from scoreMap:", score);
+                            console.log("  type:", typeof score);
+                            console.log("  scoreMap.has(key):", scoreMap.has(key));
+                        }
+                        
                         if (score !== null) {
                             newScores[index] = score;
                             matchCount++;
+                            
+                            // ===== 【NEWSCORES TRACE】代入後 =====
+                            if (index === 25 || key === debugKey) {
+                                console.log("after newScores[" + index + "]:", newScores[index]);
+                                console.trace("STACK TRACE");
+                                console.log("=== NEWSCORES TRACE END ===");
+                            }
                             
                             // ===== 【デバッグ】特定キーのスコア代入 =====
                             if (key === debugKey) {
@@ -1061,6 +1085,29 @@
                                     '一致': score === newScores[index] ? '✅' : '❌'
                                 });
                             }
+                        } else {
+                            // ===== 【NEWSCORES TRACE】nullの場合 =====
+                            if (index === 25 || key === debugKey) {
+                                console.log("score is null, NOT assigning to newScores");
+                                console.log("=== NEWSCORES TRACE END ===");
+                            }
+                        }
+                    } else {
+                        // ===== 【NEWSCORES TRACE】キーが存在しない場合 =====
+                        if (index === 25 || (item.category && item.category.includes('職業生活') && item.name && item.name.includes('欠席'))) {
+                            console.log("\n=== NEWSCORES TRACE START (KEY NOT FOUND) ===");
+                            console.log("target index:", index);
+                            console.log("target key:", JSON.stringify(key));
+                            console.log("item.category:", JSON.stringify(item.category));
+                            console.log("item.name:", JSON.stringify(item.name));
+                            console.log("scoreMap.has(key):", false);
+                            console.log("Available keys in scoreMap (職業生活):");
+                            const syokugyouKeys = [...scoreMap.keys()].filter(k => k.includes('職業生活'));
+                            syokugyouKeys.forEach(k => {
+                                console.log("  -", JSON.stringify(k), "→", scoreMap.get(k));
+                            });
+                            console.log("newScores[" + index + "] will remain undefined (not assigned)");
+                            console.log("=== NEWSCORES TRACE END ===");
                         }
                     }
                     
