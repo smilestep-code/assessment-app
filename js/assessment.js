@@ -799,37 +799,58 @@
                     text = text.substring(1);
                 }
                 
-                // ===== 【最終リセット修正】split(',')で直接読む =====
-                console.log('\n🔥🔥🔥 CSV読み込み: split(\',\') 直接読取り方式 🔥🔥🔥');
+                // ===== 【致命エラー修正】dataRows を必ず定義 =====
+                console.log('\n🔥🔥🔥 CSV読み込み: 動的ヘッダー解析方式 🔥🔥🔥');
                 
-                const lines = text.split(/\r?\n/).filter(line => line.trim());
-                if (lines.length < 2) {
+                const dataRows = text.split(/\r?\n/).filter(l => l.trim() !== '');
+                if (dataRows.length < 2) {
                     alert('❌ CSV形式が不正です（ヘッダ行とデータ行が必要）');
                     return;
                 }
                 
-                const headerLine = lines[0];
-                const dataLines = lines.slice(1);
+                // ヘッダー行を取り出し
+                const header = dataRows.shift();
                 
                 console.log('📊 CSV解析:');
-                console.log('  ヘッダ行:', headerLine);
-                console.log('  データ行数:', dataLines.length);
+                console.log('  ヘッダ行:', header);
+                console.log('  データ行数:', dataRows.length);
                 
-                if (dataLines.length === 0) {
+                if (dataRows.length === 0) {
                     alert('❌ データ行がありません');
                     return;
                 }
                 
+                // ===== 【スコア誤読修正】ヘッダーから動的に列インデックスを決める =====
+                const headers = header.split(',').map(h => h.replace(/^\uFEFF/, '').trim());
+                const idxCategory = headers.indexOf('カテゴリ');
+                const idxItem = headers.indexOf('項目');
+                const idxScore = headers.indexOf('スコア');
+                const idxEval = headers.indexOf('評価');
+                const idxMemo = headers.indexOf('メモ');
+                
+                console.log('📋 ヘッダー解析:');
+                console.log('  headers:', headers);
+                console.log('  idxCategory:', idxCategory);
+                console.log('  idxItem:', idxItem);
+                console.log('  idxScore:', idxScore);
+                console.log('  idxEval:', idxEval);
+                console.log('  idxMemo:', idxMemo);
+                
+                if (idxCategory < 0 || idxItem < 0 || idxScore < 0) {
+                    alert('❌ CSV形式が不正です（必須列: カテゴリ, 項目, スコア）');
+                    return;
+                }
+                
                 // 基本情報（最初の行から取得）
-                const firstLine = dataLines[0];
+                const firstLine = dataRows[0];
                 const firstColumns = firstLine.split(',');
                 const basicInfo = {
-                    entryDate: firstColumns[0]?.trim() || '',
-                    userName: firstColumns[1]?.trim() || '',
-                    managementNumber: firstColumns[2]?.trim() || '',
-                    evaluatorName: firstColumns[3]?.trim() || '',
-                    startDate: firstColumns[4]?.trim() || '',
-                    endDate: firstColumns[5]?.trim() || ''
+                    entryDate: firstColumns[headers.indexOf('記入日')]?.trim() || '',
+                    userName: firstColumns[headers.indexOf('利用者名')]?.trim() || '',
+                    managementNumber: firstColumns[headers.indexOf('管理番号')]?.trim() || '',
+                    evaluatorName: firstColumns[headers.indexOf('評価実施者名')]?.trim() || '',
+                    startDate: firstColumns[headers.indexOf('評価期間開始')]?.trim() || '',
+                    endDate: firstColumns[headers.indexOf('評価期間終了')]?.trim() || ''
                 };
                 
                 if (!basicInfo.userName) {
@@ -851,38 +872,43 @@
                 const importScoreMap = new Map();
                 const importMemoMap = new Map();
                 
-                console.log('\n🔥🔥🔥 importScoreMap構築: split(\',\') 直接読取り 🔥🔥🔥');
+                console.log('\n🔥🔥🔥 importScoreMap構築: 動的ヘッダー解析 🔥🔥🔥');
                 
-                dataLines.forEach((line, lineIndex) => {
-                    // ===== 【最終リセット修正】split(',')で直接 columns[8] を読む =====
-                    const columns = line.split(',');
-                    const category = columns[6]?.trim();
-                    const item = columns[7]?.trim();
-                    const scoreRaw = columns[8]?.trim();
-                    const memo = columns[10]?.trim() || '';
+                dataRows.forEach((line, lineIndex) => {
+                    // ===== 【確実化】動的に列インデックスを使う =====
+                    const cols = line.split(',');
+                    const category = (cols[idxCategory] ?? '').trim();
+                    const item = (cols[idxItem] ?? '').trim();
+                    const scoreRaw = (cols[idxScore] ?? '').trim();
+                    const memo = idxMemo >= 0 ? (cols[idxMemo] ?? '').trim() : '';
                     
                     // キー生成
-                    const key = makeItemKey(category, item, false);
+                    const key = category + '__' + item;
                     
-                    // ===== 【FORCE READ DEBUG】対象キーだけ =====
-                    if (category === "職業生活" && item === "欠席等の連絡") {
-                        console.log("\n=== FORCE READ DEBUG ===");
-                        console.log("columns[8]=", scoreRaw);
-                        console.log("full line=", line);
-                        console.log("key=", key);
-                        console.log("=== FORCE READ DEBUG END ===");
+                    // ===== 【デバッグログ（必須）】対象キーだけ =====
+                    if (key === '職業生活__欠席等の連絡') {
+                        console.log('\n=== CSV LINE DEBUG ===');
+                        console.log('CSV LINE DEBUG:', line);
+                        console.log('headers:', headers);
+                        console.log('idxScore:', idxScore, 'scoreRaw:', scoreRaw);
                     }
                     
-                    // ===== 【スコア計算】columns[8]だけ使用（評価列は一切使わない） =====
-                    const score = Number(scoreRaw);
-                    const finalScore = (score >= 1 && score <= 5) ? score : null;
+                    // ===== 【スコア計算】scoreRawだけ使用（評価列からのフォールバック禁止） =====
+                    const scoreNum = Number(scoreRaw);
+                    const score = (scoreNum >= 1 && scoreNum <= 5) ? scoreNum : null;
+                    
+                    // ===== 【デバッグログ続き】 =====
+                    if (key === '職業生活__欠席等の連絡') {
+                        console.log('scoreNum:', scoreNum, 'score:', score);
+                        console.log('=== CSV LINE DEBUG END ===');
+                    }
                     
                     // 重複キー警告
                     if (importScoreMap.has(key)) {
-                        console.warn("⚠️ DUPLICATE KEY:", key, "old:", importScoreMap.get(key), "new:", finalScore);
+                        console.warn('⚠️ DUPLICATE KEY:', key, 'old:', importScoreMap.get(key), 'new:', score);
                     }
                     
-                    importScoreMap.set(key, finalScore);
+                    importScoreMap.set(key, score);
                     
                     if (memo) {
                         importMemoMap.set(key, memo);
