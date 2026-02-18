@@ -893,10 +893,9 @@
                     const categoryRaw = row[colMap['カテゴリ']];
                     const itemNameRaw = row[colMap['項目']];
                     
-                    // ===== 【決着用デバッグ】対象項目の判定 =====
-                    const categoryNorm = normalizeString(categoryRaw);
-                    const itemNorm = normalizeString(itemNameRaw);
-                    const isDebugTarget = (categoryNorm === '職業生活' && itemNorm === '欠席等の連絡');
+                    // カテゴリと項目をトリム・正規化
+                    const categoryTrim = normalizeString(categoryRaw);
+                    const itemTrim = normalizeString(itemNameRaw);
                     
                     // ===== 【重要】「スコア」列のみ使用（「評価」列は使用しない） =====
                     const scoreRaw = row[colMap['スコア']];  // ← 必ず「スコア」列のみ
@@ -905,29 +904,39 @@
                     const hyokaText = colMap['評価'] !== undefined ? row[colMap['評価']] : '';
                     const memo = colMap['メモ'] !== undefined ? row[colMap['メモ']] : '';
                     
-                    // ===== 【決着用デバッグ】ROW DEBUG START =====
-                    if (isDebugTarget) {
-                        console.log("\n=== ROW DEBUG START ===");
-                        console.log("row raw:", row);
-                        console.log("colMap:", colMap);
-                        console.log("row.length:", row.length);
-                        console.log("colMap['スコア'] index:", colMap['スコア']);
-                        console.log("colMap['評価'] index:", colMap['評価']);
-                        console.log("row['スコア'] raw:", scoreRaw, "json:", JSON.stringify(scoreRaw));
-                        console.log("row['評価'] raw:", hyokaText, "json:", JSON.stringify(hyokaText));
-                    }
-                    
                     // 一意キーを生成（正規化済み）
                     const key = makeItemKey(categoryRaw, itemNameRaw, false);
                     
-                    // ===== 【重要】スコア変換: normalizeNumber()を使用 =====
-                    const score = normalizeNumber(scoreRaw);
+                    // ===== 【重要】スコア算出: 「スコア」列のみ使用 =====
+                    // 1. trim()で前後の空白除去
+                    // 2. Number()で数値化
+                    // 3. 1〜5の範囲チェック（範囲外はnull）
+                    const scoreTrimmed = String(scoreRaw || '').trim();
+                    const scoreNumber = Number(scoreTrimmed);
+                    const score = (!isNaN(scoreNumber) && scoreNumber >= 1 && scoreNumber <= 5) 
+                        ? scoreNumber 
+                        : null;
                     
-                    // ===== 【決着用デバッグ】BEFORE SET =====
-                    if (isDebugTarget) {
-                        console.log("computed score BEFORE SET:", score, "type:", typeof score);
-                        console.log("key:", key);
-                        console.log("=== ROW DEBUG END ===");
+                    // ===== 【CSV→scoreMap DEBUG】対象キー専用ログ（scoreMap.set直前） =====
+                    if (categoryTrim === "職業生活" && itemTrim === "欠席等の連絡") {
+                        console.log("\n=== CSV->scoreMap DEBUG START ===");
+                        console.log("lineNo:", rowIndex + 2);  // +2 = ヘッダ(1) + 0-index補正(1)
+                        console.log("raw line (split result):", row);
+                        console.log("columns:");
+                        console.log("  カテゴリ:", JSON.stringify(categoryRaw));
+                        console.log("  項目:", JSON.stringify(itemNameRaw));
+                        console.log("  スコア列index:", colMap['スコア']);
+                        console.log("  評価列index:", colMap['評価']);
+                        console.log("scoreRaw:", scoreRaw, "json:", JSON.stringify(scoreRaw));
+                        console.log("scoreRaw source: row[" + colMap['スコア'] + "]");
+                        console.log("評価列の値:", hyokaText, "json:", JSON.stringify(hyokaText), "← スコア計算には使用しない");
+                        console.log("score算出過程:");
+                        console.log("  1. trim:", JSON.stringify(scoreTrimmed));
+                        console.log("  2. Number():", scoreNumber);
+                        console.log("  3. 範囲チェック(1〜5):", score);
+                        console.log("final score:", score, "type:", typeof score);
+                        console.log("key:", JSON.stringify(key));
+                        console.log("=== CSV->scoreMap DEBUG END ===");
                     }
                     
                     // 重複チェック（詳細ログ）
@@ -938,7 +947,7 @@
                             'keyJSON': JSON.stringify(key),
                             '旧score': oldScore,
                             '新score': score,
-                            '行番号': rowIndex + 2,  // +2 = ヘッダ(1) + 0-index補正(1)
+                            '行番号': rowIndex + 2,
                             '行内容': row
                         });
                         console.warn(`   → 後勝ち採用: ${oldScore} → ${score}`);
