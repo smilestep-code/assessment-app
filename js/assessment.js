@@ -76,10 +76,26 @@
     }
     
     // ===== 一意キー生成（正規化済みカテゴリ + 項目名） =====
-    function makeItemKey(category, itemName) {
+    function makeItemKey(category, itemName, debugLog = false) {
+        // ===== 【重要】trim()を必ず実行 =====
+        category = String(category || '').trim();
+        itemName = String(itemName || '').trim();
+        
         const normCat = normalizeString(category);
         const normItem = normalizeString(itemName);
-        return `${normCat}__${normItem}`;
+        const key = `${normCat}__${normItem}`;
+        
+        // ===== 【デバッグ】不可視文字チェック =====
+        if (debugLog) {
+            console.log('🔑 makeItemKey() called:');
+            console.log('  category (raw):', JSON.stringify(category));
+            console.log('  itemName (raw):', JSON.stringify(itemName));
+            console.log('  category (normalized):', JSON.stringify(normCat));
+            console.log('  itemName (normalized):', JSON.stringify(normItem));
+            console.log('  key (final):', JSON.stringify(key));
+        }
+        
+        return key;
     }
     
     // ===== LocalStorage管理（利用者単位） =====
@@ -870,8 +886,23 @@
                     const scoreRaw = row[colMap['スコア']];  // ← 「スコア」列を使用（「評価」ではない）
                     const memo = colMap['メモ'] !== undefined ? row[colMap['メモ']] : '';
                     
+                    // ===== 【デバッグ】特定項目の詳細ログ =====
+                    const isDebugTarget = (categoryRaw && categoryRaw.includes('職業生活')) && 
+                                         (itemNameRaw && itemNameRaw.includes('欠席'));
+                    
+                    if (isDebugTarget) {
+                        console.log(`\n🔍 [行${rowIndex + 2}] デバッグ対象項目を検出:`);
+                        console.log('  categoryRaw:', JSON.stringify(categoryRaw));
+                        console.log('  itemNameRaw:', JSON.stringify(itemNameRaw));
+                    }
+                    
                     // 一意キーを生成（正規化済み）
-                    const key = makeItemKey(categoryRaw, itemNameRaw);
+                    const key = makeItemKey(categoryRaw, itemNameRaw, isDebugTarget);
+                    
+                    if (isDebugTarget) {
+                        console.log('  生成されたキー:', JSON.stringify(key));
+                        console.log('  スコア:', scoreRaw);
+                    }
                     
                     // スコアを厳格に正規化
                     const scoreNormalized = String(scoreRaw).trim();
@@ -882,6 +913,7 @@
                         const oldScore = scoreMap.get(key);
                         console.warn(`⚠️ 重複キー検出:`, {
                             key: key,
+                            'keyJSON': JSON.stringify(key),
                             '旧score': oldScore,
                             '新score': score,
                             '行番号': rowIndex + 2,  // +2 = ヘッダ(1) + 0-index補正(1)
@@ -912,6 +944,7 @@
                 const debugKey = '職業生活__欠席等の連絡';
                 console.log('\n🔍🔍🔍 [特定キー追跡開始] 🔍🔍🔍');
                 console.log(`対象キー: "${debugKey}"`);
+                console.log(`対象キー(JSON): ${JSON.stringify(debugKey)}`);
                 console.log(`scoreMapに存在: ${scoreMap.has(debugKey)}`);
                 if (scoreMap.has(debugKey)) {
                     console.log(`scoreMap.get("${debugKey}") = ${scoreMap.get(debugKey)}`);
@@ -919,7 +952,10 @@
                     console.log('⚠️ scoreMapに該当キーが存在しません');
                     console.log('scoreMap内の全キー（職業生活カテゴリ）:');
                     const syokugyouKeys = [...scoreMap.keys()].filter(k => k.startsWith('職業生活'));
-                    syokugyouKeys.forEach(k => console.log(`  - "${k}")`));
+                    syokugyouKeys.forEach(k => {
+                        console.log(`  - キー: "${k}"`);
+                        console.log(`    JSON: ${JSON.stringify(k)}`);
+                    });
                 }
                 
                 // ===== 【重要】assessmentItemsを走査してindexベースのscores/memosを構築 =====
@@ -930,7 +966,17 @@
                 let debugKeyIndex = -1;  // デバッグ用: 特定キーのindex
                 
                 assessmentItems.forEach((item, index) => {
-                    const key = makeItemKey(item.category, item.name);
+                    // ===== 【デバッグ】特定項目の詳細ログ =====
+                    const isDebugTargetItem = (item.category && item.category.includes('職業生活')) && 
+                                             (item.name && item.name.includes('欠席'));
+                    
+                    if (isDebugTargetItem) {
+                        console.log(`\n🔍 [items.json index=${index}] デバッグ対象項目:`);
+                        console.log('  item.category:', JSON.stringify(item.category));
+                        console.log('  item.name:', JSON.stringify(item.name));
+                    }
+                    
+                    const key = makeItemKey(item.category, item.name, isDebugTargetItem);
                     
                     // ===== 【デバッグ】特定キーのindex検出 =====
                     if (key === debugKey) {
@@ -940,6 +986,7 @@
                         console.log(`  項目名: "${item.name}"`);
                         console.log(`  index: ${index}`);
                         console.log(`  生成されたキー: "${key}"`);
+                        console.log(`  生成されたキー(JSON): ${JSON.stringify(key)}`);
                     }
                     
                     if (scoreMap.has(key)) {
