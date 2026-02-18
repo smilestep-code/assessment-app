@@ -1,9 +1,9 @@
 // 就労選択支援サービス - アセスメントアプリケーション
-// Main JavaScript v202602120230
+// Main JavaScript v202602120240
 (function() {
     'use strict';
     
-    const VERSION = '202602120230';
+    const VERSION = '202602120250';
     console.log(`Assessment App v${VERSION} initializing...`);
     
     // ===== 設定 =====
@@ -31,6 +31,7 @@
     
     // ===== スコア別カラー取得 =====
     function getScoreColor(score) {
+        if (score === null || score === undefined) return '#e5e7eb'; // 未入力はグレー
         return scoreCriteria[score]?.color || '#94a3b8';
     }
     
@@ -54,6 +55,19 @@
         
         // 変換できない場合は空文字を返す
         return '';
+    }
+    
+    // ===== 全角数字を半角に正規化 =====
+    function normalizeNumber(str) {
+        if (!str) return null;
+        const normalized = String(str).trim().replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+        const num = Number(normalized);
+        return (!isNaN(num) && num >= 1 && num <= 5) ? num : null;
+    }
+    
+    // ===== 一意キー生成（カテゴリ + 項目名） =====
+    function makeItemKey(category, itemName) {
+        return `${category}__${itemName}`;
     }
     
     // ===== LocalStorage管理（利用者単位） =====
@@ -599,21 +613,48 @@
         const container = document.getElementById('chartContainer');
         container.innerHTML = '';
         
-        const grouped = {};
+        // カテゴリ別に定義項目を抽出（assessmentItems = 固定順の定義配列）
+        const categorizedItems = {};
         assessmentItems.forEach((item, index) => {
-            const score = currentAssessment.scores[index];
-            if (score) {
-                if (!grouped[item.category]) grouped[item.category] = [];
-                grouped[item.category].push({ ...item, index, score });
+            if (!categorizedItems[item.category]) {
+                categorizedItems[item.category] = [];
             }
+            categorizedItems[item.category].push({ ...item, index });
         });
         
         const BAR_HEIGHT = 32;
         const GAP = 6;
         const PADDING = 40;
         
-        Object.keys(grouped).forEach(category => {
-            const items = grouped[category];
+        Object.keys(categorizedItems).forEach(category => {
+            const allItemsInCategory = categorizedItems[category];
+            
+            // ===== 【重要】固定長配列生成：全定義項目を必ず含む =====
+            // 未入力項目も配列に含め、nullで保持（詰めない）
+            const labels = [];
+            const data = [];
+            
+            allItemsInCategory.forEach(item => {
+                const score = currentAssessment.scores[item.index];
+                
+                // 全項目をlabelsに追加（未入力でも必ず追加）
+                labels.push(item.name);
+                
+                // 未入力はnull（0ではない）
+                data.push(score !== undefined && score !== null ? score : null);
+            });
+            
+            // デバッグ情報をコンソール出力
+            console.log(`📊 [${category}] 固定長配列生成:`, {
+                項目数: allItemsInCategory.length,
+                labels数: labels.length,
+                data数: data.length,
+                未入力項目数: data.filter(v => v === null).length,
+                入力済項目数: data.filter(v => v !== null).length
+            });
+            
+            // 色配列（nullはグレー）
+            const colors = data.map(s => getScoreColor(s));
             
             const block = document.createElement('div');
             block.className = 'chart-block';
@@ -632,13 +673,9 @@
             
             const canvas = document.createElement('canvas');
             canvas.width = 520;
-            canvas.height = items.length * (BAR_HEIGHT + GAP) + PADDING;
+            canvas.height = allItemsInCategory.length * (BAR_HEIGHT + GAP) + PADDING;
             block.appendChild(canvas);
             container.appendChild(block);
-            
-            const labels = items.map(i => i.name);
-            const data = items.map(i => i.score);
-            const colors = data.map(s => getScoreColor(s));
             
             const chart = new Chart(canvas, {
                 type: 'bar',
@@ -649,13 +686,18 @@
                         backgroundColor: colors,
                         borderWidth: 0,
                         barThickness: BAR_HEIGHT,
-                        borderRadius: 4
+                        borderRadius: 4,
+                        // null値でも位置を保持（スキップしない）
+                        skipNull: false,
+                        parsing: false
                     }]
                 },
                 options: {
                     indexAxis: 'y',
                     responsive: false,
                     maintainAspectRatio: false,
+                    // null値を詰めずに位置保持
+                    parsing: false,
                     plugins: {
                         legend: { display: false },
                         datalabels: {
@@ -663,12 +705,25 @@
                             font: { size: 14, weight: 'bold' },
                             anchor: 'center',
                             align: 'center',
-                            formatter: (v) => v
+                            // nullは空文字表示（ラベルなし）だが位置は保持
+                            formatter: (v) => v === null || v === undefined ? '' : v
                         }
                     },
                     scales: {
-                        x: { min: 0, max: 5, ticks: { stepSize: 1 } },
-                        y: { display: false }
+                        x: { 
+                            min: 0, 
+                            max: 5, 
+                            ticks: { stepSize: 1 },
+                            // null値も軸に含める
+                            beginAtZero: true
+                        },
+                        y: { 
+                            display: false,
+                            // 全ラベルを表示（nullでもスキップしない）
+                            ticks: {
+                                autoSkip: false
+                            }
+                        }
                     }
                 },
                 plugins: [ChartDataLabels]
@@ -751,7 +806,7 @@
                     if (idx >= 0) colMap[col] = idx;
                 });
                 
-                if (!colMap['カテゴリ'] || !colMap['項目'] || !colMap['スコア']) {
+                if (colMap['カテゴリ'] === undefined || colMap['項目'] === undefined || colMap['スコア'] === undefined) {
                     alert('❌ CSV形式が不正です（必須列: カテゴリ, 項目, スコア）');
                     return;
                 }
@@ -779,26 +834,51 @@
                     return;
                 }
                 
-                // items.json の項目とマッチング
-                const newScores = {};
-                const newMemos = {};
-                let matchCount = 0;
+                // ===== 【重要】カテゴリ+項目名でMapを作成（index順に依存しない） =====
+                const scoreMap = new Map();
+                const memoMap = new Map();
                 
                 dataRows.forEach(row => {
                     const category = row[colMap['カテゴリ']];
                     const itemName = row[colMap['項目']];
-                    const score = parseInt(row[colMap['スコア']]);
+                    const scoreStr = row[colMap['スコア']];
                     const memo = colMap['メモ'] !== undefined ? row[colMap['メモ']] : '';
                     
-                    // items.json から該当項目を検索
-                    const itemIndex = assessmentItems.findIndex(item => 
-                        item.category === category && item.name === itemName
-                    );
+                    // 一意キーを生成
+                    const key = makeItemKey(category, itemName);
                     
-                    if (itemIndex >= 0 && score >= 1 && score <= 5) {
-                        newScores[itemIndex] = score;
-                        if (memo) newMemos[itemIndex] = memo;
-                        matchCount++;
+                    // スコアを正規化（全角→半角、trim、数値化）
+                    const score = normalizeNumber(scoreStr);
+                    
+                    // 重複チェック
+                    if (scoreMap.has(key)) {
+                        console.warn(`⚠️ 重複キー検出: ${key}`);
+                    }
+                    
+                    scoreMap.set(key, score);
+                    if (memo) {
+                        memoMap.set(key, memo);
+                    }
+                });
+                
+                // ===== 【重要】assessmentItemsを走査してindexベースのscores/memosを構築 =====
+                const newScores = {};
+                const newMemos = {};
+                let matchCount = 0;
+                
+                assessmentItems.forEach((item, index) => {
+                    const key = makeItemKey(item.category, item.name);
+                    
+                    if (scoreMap.has(key)) {
+                        const score = scoreMap.get(key);
+                        if (score !== null) {
+                            newScores[index] = score;
+                            matchCount++;
+                        }
+                    }
+                    
+                    if (memoMap.has(key)) {
+                        newMemos[index] = memoMap.get(key);
                     }
                 });
                 
