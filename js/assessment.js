@@ -875,6 +875,20 @@
                 console.log('\n🔥🔥🔥 importScoreMap構築: 動的ヘッダー解析 🔥🔥🔥');
                 
                 dataRows.forEach((line, lineIndex) => {
+                    // ===== 【強制ログ1】「欠席等の連絡」を含む行を必ず表示 =====
+                    if (line.includes("欠席等の連絡")) {
+                        const cols = line.split(",");
+                        console.log("\n=== HIT LINE RAW ===");
+                        console.log("line:", line);
+                        console.log("cols.length:", cols.length);
+                        console.log("cols[6](カテゴリ想定):", cols[6]);
+                        console.log("cols[7](項目想定):", cols[7]);
+                        console.log("cols[8](スコア想定):", cols[8]);
+                        console.log("cols[9](評価想定):", cols[9]);
+                        console.log("cols(all):", cols);
+                        console.log("=== HIT LINE RAW END ===\n");
+                    }
+                    
                     // ===== 【確実化】動的に列インデックスを使う =====
                     const cols = line.split(',');
                     const category = (cols[idxCategory] ?? '').trim();
@@ -890,25 +904,28 @@
                         console.log('\n=== CSV LINE DEBUG ===');
                         console.log('CSV LINE DEBUG:', line);
                         console.log('headers:', headers);
+                        console.log('idxCategory:', idxCategory, 'category:', category);
+                        console.log('idxItem:', idxItem, 'item:', item);
                         console.log('idxScore:', idxScore, 'scoreRaw:', scoreRaw);
                     }
                     
-                    // ===== 【スコア計算】scoreRawだけ使用（評価列からのフォールバック禁止） =====
-                    const scoreNum = Number(scoreRaw);
-                    const score = (scoreNum >= 1 && scoreNum <= 5) ? scoreNum : null;
+                    // ===== 【スコア計算】cols[8]を直接採用（評価列からのフォールバック禁止） =====
+                    // 強制: cols[idxScore]のみを使用、評価列は無視
+                    const score = Number((cols[idxScore] ?? "").trim());
+                    const finalScore = (score >= 1 && score <= 5) ? score : null;
                     
                     // ===== 【デバッグログ続き】 =====
                     if (key === '職業生活__欠席等の連絡') {
-                        console.log('scoreNum:', scoreNum, 'score:', score);
+                        console.log('score:', score, 'finalScore:', finalScore);
                         console.log('=== CSV LINE DEBUG END ===');
                     }
                     
                     // 重複キー警告
                     if (importScoreMap.has(key)) {
-                        console.warn('⚠️ DUPLICATE KEY:', key, 'old:', importScoreMap.get(key), 'new:', score);
+                        console.warn('⚠️ DUPLICATE KEY:', key, 'old:', importScoreMap.get(key), 'new:', finalScore);
                     }
                     
-                    importScoreMap.set(key, score);
+                    importScoreMap.set(key, finalScore);
                     
                     if (memo) {
                         importMemoMap.set(key, memo);
