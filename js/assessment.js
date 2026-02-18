@@ -807,8 +807,8 @@
                     skipEmptyLines: true,   // 空行をスキップ
                     quoteChar: '"',         // 引用符
                     delimiter: ',',         // 区切り文字
-                    trimHeaders: true,      // ヘッダの前後空白を削除
-                    dynamicTyping: false    // 数値を自動変換しない（文字列として取得）
+                    dynamicTyping: false,   // 数値を自動変換しない（文字列として取得）
+                    transformHeader: (h) => h.replace(/^\uFEFF/, '').trim()  // ← BOMと空白を除去
                 });
                 
                 if (parseResult.errors && parseResult.errors.length > 0) {
@@ -876,14 +876,29 @@
                     const hyokaText = row['評価'] || '';  // 参照のみ（計算には使用しない）
                     const memo = row['メモ'] || '';
                     
+                    // ===== 【デバッグ（必須）】ROW PARSE DEBUG =====
+                    // 対象キーだけ必ず出す
+                    const categoryNorm = normalizeString(categoryRaw);
+                    const itemNorm = normalizeString(itemNameRaw);
+                    if (categoryNorm === "職業生活" && itemNorm === "欠席等の連絡") {
+                        console.log("\n=== ROW PARSE DEBUG START ===");
+                        console.log("row keys:", Object.keys(row));
+                        console.log("row['カテゴリ']:", row['カテゴリ']);
+                        console.log("row['項目']:", row['項目']);
+                        console.log("row['スコア']:", row['スコア'], "json:", JSON.stringify(row['スコア']));
+                        console.log("row['評価']:", row['評価'], "json:", JSON.stringify(row['評価']));
+                        console.log("=== ROW PARSE DEBUG END ===");
+                    }
+                    
                     // 一意キーを生成（正規化込み）
                     const key = makeItemKey(categoryRaw, itemNameRaw, false);
                     
-                    // ===== 【強制】スコア算出: Number(String(row["スコア"]).trim()) のみ =====
-                    // 評価列は絶対に使わない
-                    const scoreTrimmed = String(scoreRaw || '').trim();
-                    const scoreNum = Number(scoreTrimmed);
-                    const score = (!isNaN(scoreNum) && scoreNum >= 1 && scoreNum <= 5) ? scoreNum : null;
+                    // ===== 【強制・重要】スコア採用ルール =====
+                    // スコアは必ず row["スコア"] だけを使う。
+                    // 評価列から点数変換するフォールバックを完全に禁止（削除）。
+                    const scoreNum = Number(String(scoreRaw ?? '').trim());
+                    const score = (scoreNum >= 1 && scoreNum <= 5) ? scoreNum : null;
+                    // ※ scoreRawが取れない/NaNの時も「評価」から作らない。必ずnull。
                     
                     // ===== 【決着ログ（必須）】対象キー専用 =====
                     if (key === "職業生活__欠席等の連絡") {
