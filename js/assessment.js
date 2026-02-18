@@ -884,6 +884,19 @@
                 const scoreMap = new Map();
                 const memoMap = new Map();
                 
+                // ===== 【デバッグ】scoreMap.setをフックして値の設定を100%捕捉 =====
+                const originalSet = scoreMap.set.bind(scoreMap);
+                scoreMap.set = (k, v) => {
+                    if (k === "職業生活__欠席等の連絡") {
+                        console.log("\n=== scoreMap.set TRACE START ===");
+                        console.log("key:", JSON.stringify(k));
+                        console.log("value:", v, "type:", typeof v);
+                        console.trace("STACK TRACE");
+                        console.log("=== scoreMap.set TRACE END ===");
+                    }
+                    return originalSet(k, v);
+                };
+                
                 console.log('📊 CSV読み込み開始:', {
                     'データ行数': dataRows.length,
                     'ヘッダ': header
