@@ -852,11 +852,21 @@
                     return;
                 }
                 
-                // ===== 【重要】カテゴリ+項目名でMapを作成（index順に依存しない） =====
-                const scoreMap = new Map();
-                const memoMap = new Map();
+                // ===== 【根本修正】状態を完全初期化（既存値への依存を排除） =====
+                console.log('\n🔥🔥🔥 CSVインポート: 状態初期化開始 🔥🔥🔥');
                 
-                console.log('\n🔥🔥🔥 scoreMap構築開始（header名アクセス方式） 🔥🔥🔥');
+                // currentAssessment.scores を全項目 null に初期化
+                currentAssessment.scores = {};
+                assessmentItems.forEach((item, index) => {
+                    currentAssessment.scores[index] = null;
+                });
+                console.log('✅ currentAssessment.scores を全項目nullに初期化');
+                
+                // インポート専用のMap（既存のscoreMapは使わない）
+                const importScoreMap = new Map();
+                const importMemoMap = new Map();
+                
+                console.log('\n🔥🔥🔥 importScoreMap構築開始（CSV専用・header名アクセス方式） 🔥🔥🔥');
                 
                 dataRows.forEach((row, rowIndex) => {
                     // ===== 【PAPAPARSE】header名で直接アクセス =====
@@ -866,51 +876,51 @@
                     const hyokaText = row['評価'] || '';  // 参照のみ（計算には使用しない）
                     const memo = row['メモ'] || '';
                     
-                    // カテゴリと項目を正規化
-                    const categoryTrim = normalizeString(categoryRaw);
-                    const itemTrim = normalizeString(itemNameRaw);
-                    
-                    // 一意キーを生成
+                    // 一意キーを生成（正規化込み）
                     const key = makeItemKey(categoryRaw, itemNameRaw, false);
                     
-                    // ===== 【重要】スコア算出: 「スコア」列のみ使用 =====
-                    const score = normalizeNumber(scoreRaw);
+                    // ===== 【強制】スコア算出: Number(String(row["スコア"]).trim()) のみ =====
+                    // 評価列は絶対に使わない
+                    const scoreTrimmed = String(scoreRaw || '').trim();
+                    const scoreNum = Number(scoreTrimmed);
+                    const score = (!isNaN(scoreNum) && scoreNum >= 1 && scoreNum <= 5) ? scoreNum : null;
                     
-                    // ===== 【CSV→scoreMap SET DEBUG】対象キー専用ログ =====
+                    // ===== 【決着ログ（必須）】対象キー専用 =====
                     if (key === "職業生活__欠席等の連絡") {
-                        console.log("\n=== CSV->scoreMap SET DEBUG ===");
-                        console.log("row['スコア'] raw:", row['スコア'], "json:", JSON.stringify(row['スコア']));
-                        console.log("row['評価'] raw:", row['評価'], "json:", JSON.stringify(row['評価']));
-                        console.log("computed score:", score, "type:", typeof score);
-                        console.log("before has:", scoreMap.has(key), "before val:", scoreMap.get(key));
+                        console.log("\n=== CSV DEBUG ===");
+                        console.log("key:", key);
+                        console.log("row['スコア']=", row['スコア']);
+                        console.log("row['評価']=", row['評価']);
+                        console.log("computed score=", score);
+                        console.log("=== CSV DEBUG END ===");
                     }
                     
                     // 重複キー警告
-                    if (scoreMap.has(key)) {
-                        console.warn("⚠️ DUPLICATE KEY:", key, "old:", scoreMap.get(key), "new:", score, "row:", row);
+                    if (importScoreMap.has(key)) {
+                        console.warn("⚠️ DUPLICATE KEY:", key, "old:", importScoreMap.get(key), "new:", score, "row:", row);
                     }
                     
-                    scoreMap.set(key, score);
-                    
-                    if (key === "職業生活__欠席等の連絡") {
-                        console.log("after val:", scoreMap.get(key));
-                        console.log("=== CSV->scoreMap SET DEBUG END ===");
-                    }
+                    importScoreMap.set(key, score);
                     
                     if (memo) {
-                        memoMap.set(key, memo);
+                        importMemoMap.set(key, memo);
                     }
                 });
+                
+                // ===== 【決着ログ（必須）】ループ後の確認 =====
+                console.log("\n=== POST IMPORT ===");
+                console.log("職業生活__欠席等の連絡:", importScoreMap.get("職業生活__欠席等の連絡"));
+                console.log("=== POST IMPORT END ===");
                 
                 // デバッグ: 特定カテゴリのスコアMapを表示（最初の20件）
                 const firstCategory = assessmentItems.length > 0 ? assessmentItems[0].category : null;
                 if (firstCategory) {
-                    const categoryEntries = [...scoreMap.entries()]
+                    const categoryEntries = [...importScoreMap.entries()]
                         .filter(([k, v]) => k.startsWith(firstCategory + '__'))
                         .slice(0, 20)
                         .map(([k, v]) => ({ key: k, score: v }));
                     
-                    console.log(`📋 scoreMap サンプル [カテゴリ: ${firstCategory}]:`);
+                    console.log(`📋 importScoreMap サンプル [カテゴリ: ${firstCategory}]:`);
                     console.table(categoryEntries);
                 }
                 
@@ -919,28 +929,36 @@
                 console.log('\n🔍🔍🔍 [特定キー追跡開始] 🔍🔍🔍');
                 console.log(`対象キー: "${debugKey}"`);
                 console.log(`対象キー(JSON): ${JSON.stringify(debugKey)}`);
-                console.log(`scoreMapに存在: ${scoreMap.has(debugKey)}`);
-                if (scoreMap.has(debugKey)) {
-                    const finalScore = scoreMap.get(debugKey);
-                    console.log(`✅ scoreMap.get("${debugKey}") = ${finalScore} (type: ${typeof finalScore})`);
+                console.log(`importScoreMapに存在: ${importScoreMap.has(debugKey)}`);
+                if (importScoreMap.has(debugKey)) {
+                    const finalScore = importScoreMap.get(debugKey);
+                    console.log(`✅ importScoreMap.get("${debugKey}") = ${finalScore} (type: ${typeof finalScore})`);
                     if (finalScore === 5) {
                         console.log('🎉🎉🎉 達成条件クリア：スコアが5です！ 🎉🎉🎉');
                     } else {
                         console.error(`❌ 達成条件未達成：スコアが ${finalScore} です（期待値: 5）`);
                     }
                 } else {
-                    console.log('⚠️ scoreMapに該当キーが存在しません');
-                    console.log('scoreMap内の全キー（職業生活カテゴリ）:');
-                    const syokugyouKeys = [...scoreMap.keys()].filter(k => k.startsWith('職業生活'));
+                    console.log('⚠️ importScoreMapに該当キーが存在しません');
+                    console.log('importScoreMap内の全キー（職業生活カテゴリ）:');
+                    const syokugyouKeys = [...importScoreMap.keys()].filter(k => k.startsWith('職業生活'));
                     syokugyouKeys.forEach(k => {
-                        console.log(`  - キー: "${k}" → スコア: ${scoreMap.get(k)}`);
+                        console.log(`  - キー: "${k}" → スコア: ${importScoreMap.get(k)}`);
                         console.log(`    JSON: ${JSON.stringify(k)}`);
                     });
                 }
                 
-                // ===== 【重要】assessmentItemsを走査してindexベースのscores/memosを構築 =====
+                // ===== 【重要】newScores を全項目 null で初期化 =====
                 const newScores = {};
                 const newMemos = {};
+                assessmentItems.forEach((item, index) => {
+                    newScores[index] = null;  // 全項目nullで初期化
+                    newMemos[index] = null;
+                });
+                console.log('✅ newScores を全項目nullに初期化');
+                
+                // ===== 【重要】importScoreMap だけを見て newScores を構築 =====
+                console.log('\n🔥🔥🔥 newScores構築: importScoreMapのみ使用（既存scoreMap禁止） 🔥🔥🔥');
                 let matchCount = 0;
                 const restoreLog = [];  // UI復元検証ログ
                 let debugKeyIndex = -1;  // デバッグ用: 特定キーのindex
@@ -969,8 +987,9 @@
                         console.log(`  生成されたキー(JSON): ${JSON.stringify(key)}`);
                     }
                     
-                    if (scoreMap.has(key)) {
-                        const score = scoreMap.get(key);
+                    // ===== 【強制】importScoreMap だけを見る（既存scoreMap禁止） =====
+                    if (importScoreMap.has(key)) {
+                        const score = importScoreMap.get(key);
                         
                         // ===== 【NEWSCORES TRACE】index=25専用デバッグ =====
                         if (index === 25 || key === debugKey) {
@@ -985,7 +1004,7 @@
                             console.log("  key:", JSON.stringify(key));
                             console.log("  raw value from scoreMap:", score);
                             console.log("  type:", typeof score);
-                            console.log("  scoreMap.has(key):", scoreMap.has(key));
+                            console.log("  importScoreMap.has(key):", importScoreMap.has(key));
                         }
                         
                         if (score !== null) {
@@ -1030,19 +1049,19 @@
                             console.log("target key:", JSON.stringify(key));
                             console.log("item.category:", JSON.stringify(item.category));
                             console.log("item.name:", JSON.stringify(item.name));
-                            console.log("scoreMap.has(key):", false);
-                            console.log("Available keys in scoreMap (職業生活):");
-                            const syokugyouKeys = [...scoreMap.keys()].filter(k => k.includes('職業生活'));
+                            console.log("importScoreMap.has(key):", false);
+                            console.log("Available keys in importScoreMap (職業生活):");
+                            const syokugyouKeys = [...importScoreMap.keys()].filter(k => k.includes('職業生活'));
                             syokugyouKeys.forEach(k => {
-                                console.log("  -", JSON.stringify(k), "→", scoreMap.get(k));
+                                console.log("  -", JSON.stringify(k), "→", importScoreMap.get(k));
                             });
                             console.log("newScores[" + index + "] will remain undefined (not assigned)");
                             console.log("=== NEWSCORES TRACE END ===");
                         }
                     }
                     
-                    if (memoMap.has(key)) {
-                        newMemos[index] = memoMap.get(key);
+                    if (importMemoMap.has(key)) {
+                        newMemos[index] = importMemoMap.get(key);
                     }
                 });
                 
