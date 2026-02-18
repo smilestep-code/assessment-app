@@ -792,11 +792,13 @@
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
+                console.log("🔥🔥🔥 READER.ONLOAD START 🔥🔥🔥");
                 let text = e.target.result;
                 
                 // CSV本文をグローバル変数に保存（DevToolsから確認可能）
                 window.__lastCsvText = text;
                 console.log("CSV TEXT LENGTH:", text.length);
+                console.log("🔥🔥🔥 READER.ONLOAD TEXT CAPTURED 🔥🔥🔥");
                 
                 // BOM削除
                 if (text.charCodeAt(0) === 0xFEFF) {
