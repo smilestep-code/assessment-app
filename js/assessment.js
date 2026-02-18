@@ -3,7 +3,7 @@
 (function() {
     'use strict';
     
-    const VERSION = '202602120250';
+    const VERSION = '202602120251';
     console.log(`Assessment App v${VERSION} initializing...`);
     
     // ===== 設定 =====
@@ -644,14 +644,27 @@
                 data.push(score !== undefined && score !== null ? score : null);
             });
             
-            // デバッグ情報をコンソール出力
-            console.log(`📊 [${category}] 固定長配列生成:`, {
-                項目数: allItemsInCategory.length,
-                labels数: labels.length,
-                data数: data.length,
-                未入力項目数: data.filter(v => v === null).length,
-                入力済項目数: data.filter(v => v !== null).length
+            // ===== Chart.js用検証ログ（配列確認） =====
+            console.log(`📊 [${category}] Chart.js渡し前検証:`, {
+                'labels.length': labels.length,
+                'data.length': data.length,
+                'Array.isArray(labels)': Array.isArray(labels),
+                'Array.isArray(data)': Array.isArray(data),
+                'data sample': data.slice(0, 5),
+                '未入力項目数': data.filter(v => v === null).length,
+                '入力済項目数': data.filter(v => v !== null).length
             });
+            
+            // 配列長一致を保証
+            if (labels.length !== data.length) {
+                console.error(`❌ 配列長不一致: labels=${labels.length}, data=${data.length}`);
+                return;
+            }
+            
+            if (!Array.isArray(data)) {
+                console.error(`❌ dataが配列ではない: ${typeof data}`);
+                return;
+            }
             
             // 色配列（nullはグレー）
             const colors = data.map(s => getScoreColor(s));
@@ -677,27 +690,25 @@
             block.appendChild(canvas);
             container.appendChild(block);
             
+            // Chart.js生成（横向き棒グラフ、数値配列形式）
             const chart = new Chart(canvas, {
                 type: 'bar',
                 data: {
-                    labels: labels,
+                    labels: labels,  // 文字列配列
                     datasets: [{
-                        data: data,
+                        label: 'スコア',
+                        data: data,  // 数値配列（nullを含む）
                         backgroundColor: colors,
                         borderWidth: 0,
                         barThickness: BAR_HEIGHT,
-                        borderRadius: 4,
-                        // null値でも位置を保持（スキップしない）
-                        skipNull: false,
-                        parsing: false
+                        borderRadius: 4
+                        // skipNull, parsing は削除（Chart.js v3では不要/無効）
                     }]
                 },
                 options: {
-                    indexAxis: 'y',
+                    indexAxis: 'y',  // 横向き棒グラフ
                     responsive: false,
                     maintainAspectRatio: false,
-                    // null値を詰めずに位置保持
-                    parsing: false,
                     plugins: {
                         legend: { display: false },
                         datalabels: {
@@ -705,7 +716,7 @@
                             font: { size: 14, weight: 'bold' },
                             anchor: 'center',
                             align: 'center',
-                            // nullは空文字表示（ラベルなし）だが位置は保持
+                            // nullは空文字表示（ラベルなし）
                             formatter: (v) => v === null || v === undefined ? '' : v
                         }
                     },
@@ -714,14 +725,12 @@
                             min: 0, 
                             max: 5, 
                             ticks: { stepSize: 1 },
-                            // null値も軸に含める
                             beginAtZero: true
                         },
                         y: { 
-                            display: false,
-                            // 全ラベルを表示（nullでもスキップしない）
+                            display: false,  // ラベルは非表示（Canvas外にテキスト表示のため）
                             ticks: {
-                                autoSkip: false
+                                autoSkip: false  // 全ラベルを表示
                             }
                         }
                     }
