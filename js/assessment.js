@@ -957,6 +957,15 @@
                 });
                 console.log('✅ newScores を全項目nullに初期化');
                 
+                // ===== 【インポート完了後の確認ログ（必須）】 =====
+                console.log('\n🔥🔥🔥 POST IMPORT KEY 確認 🔥🔥🔥');
+                console.log('POST IMPORT KEY "職業生活__欠席等の連絡" =', importScoreMap.get('職業生活__欠席等の連絡'));
+                if (importScoreMap.get('職業生活__欠席等の連絡') === 5) {
+                    console.log('🎉 達成条件: importScoreMap に 5 が格納されています！');
+                } else {
+                    console.error('❌ importScoreMap の値が 5 ではありません:', importScoreMap.get('職業生活__欠席等の連絡'));
+                }
+                
                 // ===== 【重要】importScoreMap だけを見て newScores を構築 =====
                 console.log('\n🔥🔥🔥 newScores構築: importScoreMapのみ使用（既存scoreMap禁止） 🔥🔥🔥');
                 let matchCount = 0;
@@ -1000,9 +1009,9 @@
                             console.log("item.name:", JSON.stringify(item.name));
                             console.log("before newScores[" + index + "]:", newScores[index]);
                             console.log("ASSIGN SOURCE:");
-                            console.log("  from: scoreMap.get(key)");
+                            console.log("  from: importScoreMap.get(key)");
                             console.log("  key:", JSON.stringify(key));
-                            console.log("  raw value from scoreMap:", score);
+                            console.log("  raw value from importScoreMap:", score);
                             console.log("  type:", typeof score);
                             console.log("  importScoreMap.has(key):", importScoreMap.has(key));
                         }
@@ -1029,7 +1038,7 @@
                                 restoreLog.push({
                                     index: index,
                                     key: key,
-                                    'scoreMapから': score,
+                                    'importScoreMapから': score,
                                     'UIに復元': newScores[index],
                                     '一致': score === newScores[index] ? '✅' : '❌'
                                 });
@@ -1124,14 +1133,14 @@
                                 if (activeBtn) {
                                     const selectedScore = parseInt(activeBtn.getAttribute('data-score'));
                                     console.log(`  選択中のスコア（UIラジオボタン）: ${selectedScore}`);
-                                    console.log(`  期待値（scoreMap）: ${scoreMap.get(debugKey)}`);
+                                    console.log(`  期待値（importScoreMap）: ${importScoreMap.get(debugKey)}`);
                                     console.log(`  期待値（newScores）: ${newScores[debugKeyIndex]}`);
                                     console.log(`  期待値（currentAssessment）: ${currentAssessment.scores[debugKeyIndex]}`);
                                     
-                                    if (selectedScore === scoreMap.get(debugKey)) {
+                                    if (selectedScore === importScoreMap.get(debugKey)) {
                                         console.log(`  ✅ 一致しています！`);
                                     } else {
-                                        console.error(`  ❌ 不一致！ UI=${selectedScore}, scoreMap=${scoreMap.get(debugKey)}`);
+                                        console.error(`  ❌ 不一致！ UI=${selectedScore}, importScoreMap=${importScoreMap.get(debugKey)}`);
                                     }
                                 } else {
                                     console.log(`  ⚠️ activeなボタンが見つかりません（未選択状態）`);
