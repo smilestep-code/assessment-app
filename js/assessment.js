@@ -883,7 +883,12 @@
                 dataRows.forEach((row, rowIndex) => {
                     const categoryRaw = row[colMap['カテゴリ']];
                     const itemNameRaw = row[colMap['項目']];
-                    const scoreRaw = row[colMap['スコア']];  // ← 「スコア」列を使用（「評価」ではない）
+                    
+                    // ===== 【重要】「スコア」列のみ使用（「評価」列は使用しない） =====
+                    const scoreRaw = row[colMap['スコア']];  // ← 必ず「スコア」列のみ
+                    
+                    // 評価列は参照のみ（スコア計算には一切使用しない）
+                    const hyokaText = colMap['評価'] !== undefined ? row[colMap['評価']] : '';
                     const memo = colMap['メモ'] !== undefined ? row[colMap['メモ']] : '';
                     
                     // ===== 【デバッグ】特定項目の詳細ログ =====
@@ -894,19 +899,36 @@
                         console.log(`\n🔍 [行${rowIndex + 2}] デバッグ対象項目を検出:`);
                         console.log('  categoryRaw:', JSON.stringify(categoryRaw));
                         console.log('  itemNameRaw:', JSON.stringify(itemNameRaw));
+                        console.log('  【検証】CSV raw score:', JSON.stringify(scoreRaw));
+                        console.log('  【参考】評価列の値:', JSON.stringify(hyokaText), '← スコア計算には使用しない');
                     }
                     
                     // 一意キーを生成（正規化済み）
                     const key = makeItemKey(categoryRaw, itemNameRaw, isDebugTarget);
                     
-                    if (isDebugTarget) {
-                        console.log('  生成されたキー:', JSON.stringify(key));
-                        console.log('  スコア:', scoreRaw);
-                    }
+                    // ===== 【重要】スコア変換: 「スコア」列の値のみ使用 =====
+                    // 1. 文字列をトリム
+                    // 2. 全角数字を半角に変換
+                    // 3. Number()で数値化
+                    // 4. 1〜5の範囲チェック（範囲外はnull）
+                    const scoreNormalized = String(scoreRaw || '').trim();
+                    const scoreConverted = scoreNormalized.replace(/[０-９]/g, s => 
+                        String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
+                    );
+                    const scoreNumber = Number(scoreConverted);
+                    const score = (!isNaN(scoreNumber) && scoreNumber >= 1 && scoreNumber <= 5) 
+                        ? scoreNumber 
+                        : null;
                     
-                    // スコアを厳格に正規化
-                    const scoreNormalized = String(scoreRaw).trim();
-                    const score = normalizeNumber(scoreNormalized);
+                    if (isDebugTarget) {
+                        console.log('  【検証】最終採用score:', score);
+                        console.log('  変換過程:');
+                        console.log('    1. raw:', JSON.stringify(scoreRaw));
+                        console.log('    2. trimmed:', JSON.stringify(scoreNormalized));
+                        console.log('    3. 全角→半角:', JSON.stringify(scoreConverted));
+                        console.log('    4. Number():', scoreNumber);
+                        console.log('    5. 範囲チェック(1〜5):', score);
+                    }
                     
                     // 重複チェック（詳細ログ）
                     if (scoreMap.has(key)) {
